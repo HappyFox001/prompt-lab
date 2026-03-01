@@ -152,7 +152,7 @@ function XMLTreeEditor({
     setEditingNode(null);
   };
 
-  const renderNode = (node: XMLNode, indices: number[]): JSX.Element => {
+  const renderNode = (node: XMLNode, indices: number[]): React.ReactElement => {
     const path = getNodePath(indices);
     const isExpanded = expandedNodes.has(path);
     const hasChildren = node.children.length > 0;
@@ -528,7 +528,7 @@ export function SystemPromptDialog({
                   保存
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   onClick={handleCancelEdit}
                   className="flex-1"
                 >
