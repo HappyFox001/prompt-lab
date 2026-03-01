@@ -46,6 +46,9 @@
   --surface-hover: rgba(0, 0, 0, 0.05);
   --surface-message: #f7f7f8;
   --surface-message-hover: #ececf1;
+  --surface-chat: #f7f7f8;
+  --surface-submit: #10b981;
+  --surface-submit-hover: #059669;
 
   --border-light: #e5e7eb;
   --border-medium: #d1d5db;
@@ -71,6 +74,9 @@
   --surface-hover: rgba(255, 255, 255, 0.1);
   --surface-message: #444654;
   --surface-message-hover: #4a4b5e;
+  --surface-chat: #444654;
+  --surface-submit: #10b981;
+  --surface-submit-hover: #34d399;
 
   --border-light: #4d4d4f;
   --border-medium: #565869;
