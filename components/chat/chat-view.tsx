@@ -25,6 +25,11 @@ export function ChatView() {
       // 加载默认模型
       try {
         const res = await fetch('/api/models');
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Failed to load models:', res.status, errorText);
+          return;
+        }
         const data = await res.json();
         setSelectedModelId(data.defaultModelId || data.models[0]?.id || '');
       } catch (error) {

@@ -17,7 +17,14 @@ export function ModelSelector({ selectedModelId, onModelChange }: ModelSelectorP
 
   useEffect(() => {
     fetch('/api/models')
-      .then((res) => res.json())
+      .then(async (res) => {
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Failed to load models:', res.status, errorText);
+          throw new Error(`HTTP ${res.status}: ${errorText}`);
+        }
+        return res.json();
+      })
       .then((data) => {
         setModels(data.models || []);
         setLoading(false);
