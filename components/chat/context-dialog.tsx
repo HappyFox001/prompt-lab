@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { X, History, Settings, Sparkles, User, Edit2, Save } from 'lucide-react';
+import { X, History, Settings, Sparkles, User, Edit2, Save, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { Message, MemorySummary } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -10,10 +10,11 @@ interface ContextDialogProps {
   isOpen: boolean;
   onClose: () => void;
   messages: Message[];
-  memorySummaries: MemorySummary[];
+  memorySummary?: MemorySummary;
   contextWindowSize: number;
   onSaveSettings: (contextWindowSize: number) => void;
   onEditMessage?: (messageId: string, newContent: string) => void;
+  onUpdateSummary?: () => Promise<void>;
 }
 
 type Tab = 'history' | 'settings';
@@ -22,13 +23,15 @@ export function ContextDialog({
   isOpen,
   onClose,
   messages,
-  memorySummaries,
+  memorySummary,
   contextWindowSize,
   onSaveSettings,
   onEditMessage,
+  onUpdateSummary,
 }: ContextDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>('history');
   const [windowSize, setWindowSize] = useState(contextWindowSize);
+  const [isUpdatingSummary, setIsUpdatingSummary] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -42,6 +45,16 @@ export function ContextDialog({
     onClose();
   };
 
+  const handleUpdateSummary = async () => {
+    if (!onUpdateSummary) return;
+    setIsUpdatingSummary(true);
+    try {
+      await onUpdateSummary();
+    } finally {
+      setIsUpdatingSummary(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   // 计算哪些消息在当前上下文窗口中
@@ -49,13 +62,8 @@ export function ContextDialog({
     messages.slice(-contextWindowSize).map((m) => m.id)
   );
 
-  // 计算已被摘要的消息
-  const summarizedMessageIndices = new Set<number>();
-  memorySummaries.forEach((summary) => {
-    for (let i = summary.messageRange.start; i < summary.messageRange.end; i++) {
-      summarizedMessageIndices.add(i);
-    }
-  });
+  // 计算哪些消息已被摘要
+  const summarizedUpToIndex = memorySummary?.summarizedUpToIndex ?? 0;
 
   return (
     <>
@@ -66,7 +74,7 @@ export function ContextDialog({
       />
 
       {/* 对话框 */}
-      <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-4xl max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-light bg-surface-primary shadow-2xl fade-in flex flex-col">
+      <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-6xl max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-light bg-surface-primary shadow-2xl fade-in flex flex-col">
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-6 border-b border-border-light">
           <h2 className="text-xl font-semibold text-text-primary">对话上下文</h2>
@@ -111,20 +119,30 @@ export function ContextDialog({
         </div>
 
         {/* 内容区域 */}
-        <div className="flex-1 overflow-y-auto p-6">
-          {activeTab === 'history' ? (
-            <HistoryTab
-              messages={messages}
-              memorySummaries={memorySummaries}
-              recentMessageIds={recentMessageIds}
-              summarizedMessageIndices={summarizedMessageIndices}
-              onEditMessage={onEditMessage}
-            />
-          ) : (
-            <SettingsTab
-              windowSize={windowSize}
-              setWindowSize={setWindowSize}
-              summaryCount={memorySummaries.length}
+        <div className="flex flex-1 overflow-hidden">
+          {/* 左侧：历史记录或设置 */}
+          <div className="flex-1 overflow-y-auto p-6">
+            {activeTab === 'history' ? (
+              <HistoryTab
+                messages={messages}
+                recentMessageIds={recentMessageIds}
+                summarizedUpToIndex={summarizedUpToIndex}
+                onEditMessage={onEditMessage}
+              />
+            ) : (
+              <SettingsTab
+                windowSize={windowSize}
+                setWindowSize={setWindowSize}
+              />
+            )}
+          </div>
+
+          {/* 右侧：摘要展示区域 */}
+          {activeTab === 'history' && (
+            <SummarySidebar
+              memorySummary={memorySummary}
+              onUpdateSummary={handleUpdateSummary}
+              isUpdating={isUpdatingSummary}
             />
           )}
         </div>
@@ -145,18 +163,105 @@ export function ContextDialog({
   );
 }
 
+// 右侧摘要展示区域
+function SummarySidebar({
+  memorySummary,
+  onUpdateSummary,
+  isUpdating,
+}: {
+  memorySummary?: MemorySummary;
+  onUpdateSummary?: () => void;
+  isUpdating: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  return (
+    <div
+      className={cn(
+        'border-l border-border-light bg-surface-secondary transition-all duration-300',
+        isExpanded ? 'w-96' : 'w-12'
+      )}
+    >
+      {isExpanded ? (
+        <div className="h-full flex flex-col">
+          {/* 标题栏 */}
+          <div className="flex items-center justify-between p-4 border-b border-border-light">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-accent" />
+              <span className="text-sm font-semibold text-text-primary">对话摘要</span>
+            </div>
+            <button
+              onClick={() => setIsExpanded(false)}
+              className="p-1 rounded hover:bg-surface-hover transition-colors"
+              title="收起"
+            >
+              <ChevronUp className="h-4 w-4 text-text-tertiary" />
+            </button>
+          </div>
+
+          {/* 摘要内容 */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {memorySummary ? (
+              <div className="space-y-3">
+                <div className="text-xs text-text-tertiary">
+                  已摘要至第 {memorySummary.summarizedUpToIndex} 条消息 ·{' '}
+                  {new Date(memorySummary.lastUpdated).toLocaleString('zh-CN', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </div>
+                <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
+                  {memorySummary.content}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-text-tertiary text-center py-8">
+                暂无摘要
+                <br />
+                每5轮对话后自动生成
+              </div>
+            )}
+          </div>
+
+          {/* 手动更新按钮 */}
+          <div className="p-4 border-t border-border-light">
+            <button
+              onClick={onUpdateSummary}
+              disabled={isUpdating}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+            >
+              <RefreshCw className={cn('h-4 w-4', isUpdating && 'animate-spin')} />
+              {isUpdating ? '生成中...' : '手动更新摘要'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="h-full flex items-start justify-center pt-4">
+          <button
+            onClick={() => setIsExpanded(true)}
+            className="p-2 rounded hover:bg-surface-hover transition-colors"
+            title="展开摘要"
+          >
+            <ChevronDown className="h-4 w-4 text-text-tertiary rotate-90" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 历史记录标签页
 function HistoryTab({
   messages,
-  memorySummaries,
   recentMessageIds,
-  summarizedMessageIndices,
+  summarizedUpToIndex,
   onEditMessage,
 }: {
   messages: Message[];
-  memorySummaries: MemorySummary[];
   recentMessageIds: Set<string>;
-  summarizedMessageIndices: Set<number>;
+  summarizedUpToIndex: number;
   onEditMessage?: (messageId: string, newContent: string) => void;
 }) {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -179,6 +284,7 @@ function HistoryTab({
     setEditingMessageId(null);
     setEditContent('');
   };
+
   return (
     <div className="space-y-6">
       {/* 说明 */}
@@ -186,7 +292,7 @@ function HistoryTab({
         <p>
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-accent/10 text-accent font-medium">
             <span className="w-2 h-2 rounded-full bg-accent"></span>
-            绿色标记
+            绿色边框
           </span>
           {' '}表示当前发送给AI的消息
         </p>
@@ -198,42 +304,6 @@ function HistoryTab({
         </p>
       </div>
 
-      {/* 摘要区域 */}
-      {memorySummaries.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-text-primary flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-accent" />
-            对话摘要（{memorySummaries.length}）
-          </h3>
-          <div className="space-y-3">
-            {memorySummaries.map((summary, idx) => (
-              <div
-                key={summary.id}
-                className="rounded-lg border border-border-light bg-surface-secondary p-4"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <span className="text-xs font-medium text-text-tertiary">
-                    摘要 #{idx + 1} · 消息 {summary.messageRange.start + 1}-
-                    {summary.messageRange.end}
-                  </span>
-                  <span className="text-xs text-text-tertiary">
-                    {new Date(summary.createdAt).toLocaleString('zh-CN', {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                </div>
-                <p className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
-                  {summary.content}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* 消息列表 */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-text-primary">
@@ -242,7 +312,7 @@ function HistoryTab({
         <div className="space-y-2">
           {messages.map((message, index) => {
             const isInContext = recentMessageIds.has(message.id);
-            const isSummarized = summarizedMessageIndices.has(index);
+            const isSummarized = index < summarizedUpToIndex;
             const isUser = message.role === 'user';
             const isEditing = editingMessageId === message.id;
 
@@ -351,11 +421,9 @@ function HistoryTab({
 function SettingsTab({
   windowSize,
   setWindowSize,
-  summaryCount,
 }: {
   windowSize: number;
   setWindowSize: (size: number) => void;
-  summaryCount: number;
 }) {
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
@@ -391,14 +459,7 @@ function SettingsTab({
           <p>• 新摘要会整合之前的摘要内容，保持连贯性</p>
           <p>• 摘要会作为上下文发送给AI，保持长期记忆</p>
           <p>• 完整对话历史始终保存，可随时查看和编辑</p>
-        </div>
-      </div>
-
-      {/* 统计信息 */}
-      <div className="rounded-lg border border-border-light bg-surface-secondary p-4">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-text-secondary">当前对话摘要数量</span>
-          <span className="text-2xl font-semibold text-accent">{summaryCount}</span>
+          <p>• 可以在历史记录页面手动更新摘要</p>
         </div>
       </div>
     </div>

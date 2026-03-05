@@ -7,17 +7,16 @@ export interface Message {
 }
 
 export interface MemorySummary {
-  id: string;
-  content: string; // 摘要内容
-  messageRange: { start: number; end: number }; // 对应的消息索引范围
-  createdAt: Date;
+  content: string; // 累积式摘要内容
+  summarizedUpToIndex: number; // 已摘要到第几条消息（索引）
+  lastUpdated: Date;
 }
 
 export interface Conversation {
   id: string;
   title: string;
   messages: Message[];
-  memorySummaries: MemorySummary[]; // 历史对话摘要（累积式）
+  memorySummary?: MemorySummary; // 单一累积式摘要
   createdAt: Date;
   updatedAt: Date;
   systemPromptId?: string; // 关联的系统提示词 ID

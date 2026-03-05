@@ -41,12 +41,14 @@ export function ChatView() {
       // 加载对话历史
       const saved = await indexedDB_storage.getConversations();
       if (saved.length > 0) {
-        // 兼容旧数据：添加默认的 memorySummaries 字段
-        const updatedConversations = saved.map(conv => ({
-          ...conv,
-          memorySummaries: conv.memorySummaries || [],
-          contextWindowSize: conv.contextWindowSize || 10,
-        }));
+        // 兼容旧数据：移除旧的memorySummaries数组，设置默认值
+        const updatedConversations = saved.map(conv => {
+          const { memorySummaries, ...rest } = conv as any;
+          return {
+            ...rest,
+            contextWindowSize: conv.contextWindowSize || 10,
+          };
+        });
         setConversations(updatedConversations);
         setCurrentConversationId(updatedConversations[0].id);
       } else {
@@ -152,7 +154,7 @@ export function ChatView() {
 
       const allMessages = [...currentConv.messages, userMessage];
       const contextWindowSize = currentConv.contextWindowSize || 10;
-      const memorySummaries = currentConv.memorySummaries || [];
+      const memorySummary = currentConv.memorySummary;
 
       // 只取最近N条消息
       const recentMessages = allMessages.slice(-contextWindowSize);
@@ -168,14 +170,11 @@ export function ChatView() {
         });
       }
 
-      // 2. 添加历史摘要作为上下文（如果有）
-      if (memorySummaries.length > 0) {
-        const summaryContent = memorySummaries
-          .map((s, idx) => `[历史对话摘要 ${idx + 1}]\n${s.content}`)
-          .join('\n\n');
+      // 2. 添加累积摘要作为上下文（如果有）
+      if (memorySummary && memorySummary.content) {
         contextMessages.push({
           role: 'system',
-          content: `以下是之前对话的摘要，帮助你理解上下文：\n\n${summaryContent}`,
+          content: `以下是之前对话的摘要，帮助你理解上下文：\n\n${memorySummary.content}`,
         });
       }
 
@@ -258,71 +257,7 @@ export function ChatView() {
       }
 
       // 流式响应完成后，检查是否需要生成summary（固定每5轮）
-      const updatedConv = conversations.find((c) => c.id === currentConversationId);
-      if (updatedConv) {
-        const SUMMARY_INTERVAL = 5; // 固定每5轮生成一次
-        const totalMessages = updatedConv.messages.length;
-        const lastSummaryEnd = updatedConv.memorySummaries.length > 0
-          ? updatedConv.memorySummaries[updatedConv.memorySummaries.length - 1].messageRange.end
-          : 0;
-
-        // 检查自上次summary后是否有足够的新消息（一轮对话=用户+AI两条消息）
-        const newMessageCount = totalMessages - lastSummaryEnd;
-        const newRounds = Math.floor(newMessageCount / 2);
-
-        if (newRounds >= SUMMARY_INTERVAL) {
-          // 生成累积式summary
-          try {
-            const messagesToSummarize = updatedConv.messages.slice(lastSummaryEnd);
-            const previousSummary = updatedConv.memorySummaries.length > 0
-              ? updatedConv.memorySummaries[updatedConv.memorySummaries.length - 1].content
-              : null;
-
-            const summaryResponse = await fetch('/api/summary', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messages: messagesToSummarize.map(m => ({
-                  role: m.role,
-                  content: m.content,
-                })),
-                modelId: selectedModelId,
-                previousSummary,
-              }),
-            });
-
-            if (summaryResponse.ok) {
-              const { summary } = await summaryResponse.json();
-              const newSummary: MemorySummary = {
-                id: Date.now().toString(),
-                content: summary,
-                messageRange: {
-                  start: lastSummaryEnd,
-                  end: totalMessages,
-                },
-                createdAt: new Date(),
-              };
-
-              // 更新对话，添加新的累积summary
-              setConversations((prevConvs) =>
-                prevConvs.map((conv) => {
-                  if (conv.id === currentConversationId) {
-                    return {
-                      ...conv,
-                      memorySummaries: [...(conv.memorySummaries || []), newSummary],
-                      updatedAt: new Date(),
-                    };
-                  }
-                  return conv;
-                })
-              );
-            }
-          } catch (summaryError) {
-            console.error('Failed to generate summary:', summaryError);
-            // summary生成失败不影响主流程
-          }
-        }
-      }
+      await generateSummaryIfNeeded();
     } catch (error: any) {
       console.error('Error calling API:', error);
 
@@ -347,6 +282,127 @@ export function ChatView() {
       );
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 手动更新摘要
+  const handleManualUpdateSummary = async () => {
+    const currentConv = conversations.find((c) => c.id === currentConversationId);
+    if (!currentConv || !selectedModelId) return;
+
+    const totalMessages = currentConv.messages.length;
+    if (totalMessages === 0) return;
+
+    const lastSummarizedIndex = currentConv.memorySummary?.summarizedUpToIndex ?? 0;
+
+    console.log('[Summary] 手动更新摘要...');
+    try {
+      const messagesToSummarize = currentConv.messages.slice(lastSummarizedIndex);
+      const previousSummary = currentConv.memorySummary?.content || null;
+
+      const summaryResponse = await fetch('/api/summary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: messagesToSummarize.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+          modelId: selectedModelId,
+          previousSummary,
+        }),
+      });
+
+      if (summaryResponse.ok) {
+        const { summary } = await summaryResponse.json();
+        console.log('[Summary] 手动摘要生成成功');
+
+        const newSummary: MemorySummary = {
+          content: summary,
+          summarizedUpToIndex: totalMessages,
+          lastUpdated: new Date(),
+        };
+
+        setConversations((prevConvs) =>
+          prevConvs.map((conv) => {
+            if (conv.id === currentConversationId) {
+              return {
+                ...conv,
+                memorySummary: newSummary,
+                updatedAt: new Date(),
+              };
+            }
+            return conv;
+          })
+        );
+      }
+    } catch (error) {
+      console.error('[Summary] 手动生成失败:', error);
+      throw error;
+    }
+  };
+
+  // 生成摘要（如果需要）
+  const generateSummaryIfNeeded = async () => {
+    const currentConv = conversations.find((c) => c.id === currentConversationId);
+    if (!currentConv || !selectedModelId) return;
+
+    const SUMMARY_INTERVAL = 5; // 固定每5轮生成一次
+    const totalMessages = currentConv.messages.length;
+    const lastSummarizedIndex = currentConv.memorySummary?.summarizedUpToIndex ?? 0;
+
+    // 检查自上次summary后是否有足够的新消息（一轮对话=用户+AI两条消息）
+    const newMessageCount = totalMessages - lastSummarizedIndex;
+    const newRounds = Math.floor(newMessageCount / 2);
+
+    console.log('[Summary] 检查摘要条件:', { totalMessages, lastSummarizedIndex, newMessageCount, newRounds });
+
+    if (newRounds >= SUMMARY_INTERVAL) {
+      console.log('[Summary] 触发摘要生成...');
+      try {
+        const messagesToSummarize = currentConv.messages.slice(lastSummarizedIndex);
+        const previousSummary = currentConv.memorySummary?.content || null;
+
+        const summaryResponse = await fetch('/api/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: messagesToSummarize.map(m => ({
+              role: m.role,
+              content: m.content,
+            })),
+            modelId: selectedModelId,
+            previousSummary,
+          }),
+        });
+
+        if (summaryResponse.ok) {
+          const { summary } = await summaryResponse.json();
+          console.log('[Summary] 摘要生成成功:', summary.substring(0, 100) + '...');
+
+          const newSummary: MemorySummary = {
+            content: summary,
+            summarizedUpToIndex: totalMessages,
+            lastUpdated: new Date(),
+          };
+
+          // 更新对话，替换摘要
+          setConversations((prevConvs) =>
+            prevConvs.map((conv) => {
+              if (conv.id === currentConversationId) {
+                return {
+                  ...conv,
+                  memorySummary: newSummary,
+                  updatedAt: new Date(),
+                };
+              }
+              return conv;
+            })
+          );
+        }
+      } catch (summaryError) {
+        console.error('[Summary] 生成失败:', summaryError);
+      }
     }
   };
 
@@ -523,10 +579,11 @@ export function ChatView() {
         isOpen={isContextDialogOpen}
         onClose={() => setIsContextDialogOpen(false)}
         messages={currentConversation?.messages || []}
-        memorySummaries={currentConversation?.memorySummaries || []}
+        memorySummary={currentConversation?.memorySummary}
         contextWindowSize={currentConversation?.contextWindowSize || 10}
         onSaveSettings={handleSaveContextSettings}
         onEditMessage={handleEditMessage}
+        onUpdateSummary={handleManualUpdateSummary}
       />
     </div>
   );
@@ -538,7 +595,6 @@ function createNewConversation(): Conversation {
     id: Date.now().toString(),
     title: 'New Chat',
     messages: [],
-    memorySummaries: [],
     contextWindowSize: 10,
     createdAt: new Date(),
     updatedAt: new Date(),
