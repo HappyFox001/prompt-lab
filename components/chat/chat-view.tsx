@@ -1,15 +1,16 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 import { ModelSelector } from './model-selector';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SystemPromptDialog } from './system-prompt-dialog';
+import { ContextDialog } from './context-dialog';
 import { indexedDB_storage } from '@/lib/indexeddb';
-import { FileText } from 'lucide-react';
+import { FileText, History } from 'lucide-react';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -17,6 +18,7 @@ export function ChatView() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
+  const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<SystemPrompt | null>(null);
 
   // 初始化：从 IndexedDB 加载或创建新对话
@@ -39,8 +41,14 @@ export function ChatView() {
       // 加载对话历史
       const saved = await indexedDB_storage.getConversations();
       if (saved.length > 0) {
-        setConversations(saved);
-        setCurrentConversationId(saved[0].id);
+        // 兼容旧数据：添加默认的 memorySummaries 字段
+        const updatedConversations = saved.map(conv => ({
+          ...conv,
+          memorySummaries: conv.memorySummaries || [],
+          contextWindowSize: conv.contextWindowSize || 10,
+        }));
+        setConversations(updatedConversations);
+        setCurrentConversationId(updatedConversations[0].id);
       } else {
         const newConv = createNewConversation();
         setConversations([newConv]);
@@ -138,23 +146,47 @@ export function ChatView() {
     );
 
     try {
-      // 获取所有消息用于上下文
+      // 获取当前对话
       const currentConv = conversations.find((c) => c.id === currentConversationId);
-      const allMessages = [...(currentConv?.messages || []), userMessage];
+      if (!currentConv) return;
 
-      // 构建发送的消息数组，如果有系统提示词，添加到开头
-      const messagesToSend = currentSystemPrompt
-        ? [
-            { role: 'system' as const, content: currentSystemPrompt.content },
-            ...allMessages.map((msg) => ({
-              role: msg.role,
-              content: msg.content,
-            })),
-          ]
-        : allMessages.map((msg) => ({
-            role: msg.role,
-            content: msg.content,
-          }));
+      const allMessages = [...currentConv.messages, userMessage];
+      const contextWindowSize = currentConv.contextWindowSize || 10;
+      const memorySummaries = currentConv.memorySummaries || [];
+
+      // 只取最近N条消息
+      const recentMessages = allMessages.slice(-contextWindowSize);
+
+      // 构建上下文：历史摘要 + 最近消息
+      const contextMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+      // 1. 添加系统提示词（如果有）
+      if (currentSystemPrompt) {
+        contextMessages.push({
+          role: 'system',
+          content: currentSystemPrompt.content,
+        });
+      }
+
+      // 2. 添加历史摘要作为上下文（如果有）
+      if (memorySummaries.length > 0) {
+        const summaryContent = memorySummaries
+          .map((s, idx) => `[历史对话摘要 ${idx + 1}]\n${s.content}`)
+          .join('\n\n');
+        contextMessages.push({
+          role: 'system',
+          content: `以下是之前对话的摘要，帮助你理解上下文：\n\n${summaryContent}`,
+        });
+      }
+
+      // 3. 添加最近的消息
+      const messagesToSend = [
+        ...contextMessages,
+        ...recentMessages.map((msg) => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        })),
+      ];
 
       // 调用 API
       const response = await fetch('/api/chat', {
@@ -224,6 +256,73 @@ export function ChatView() {
           }
         }
       }
+
+      // 流式响应完成后，检查是否需要生成summary（固定每5轮）
+      const updatedConv = conversations.find((c) => c.id === currentConversationId);
+      if (updatedConv) {
+        const SUMMARY_INTERVAL = 5; // 固定每5轮生成一次
+        const totalMessages = updatedConv.messages.length;
+        const lastSummaryEnd = updatedConv.memorySummaries.length > 0
+          ? updatedConv.memorySummaries[updatedConv.memorySummaries.length - 1].messageRange.end
+          : 0;
+
+        // 检查自上次summary后是否有足够的新消息（一轮对话=用户+AI两条消息）
+        const newMessageCount = totalMessages - lastSummaryEnd;
+        const newRounds = Math.floor(newMessageCount / 2);
+
+        if (newRounds >= SUMMARY_INTERVAL) {
+          // 生成累积式summary
+          try {
+            const messagesToSummarize = updatedConv.messages.slice(lastSummaryEnd);
+            const previousSummary = updatedConv.memorySummaries.length > 0
+              ? updatedConv.memorySummaries[updatedConv.memorySummaries.length - 1].content
+              : null;
+
+            const summaryResponse = await fetch('/api/summary', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messages: messagesToSummarize.map(m => ({
+                  role: m.role,
+                  content: m.content,
+                })),
+                modelId: selectedModelId,
+                previousSummary,
+              }),
+            });
+
+            if (summaryResponse.ok) {
+              const { summary } = await summaryResponse.json();
+              const newSummary: MemorySummary = {
+                id: Date.now().toString(),
+                content: summary,
+                messageRange: {
+                  start: lastSummaryEnd,
+                  end: totalMessages,
+                },
+                createdAt: new Date(),
+              };
+
+              // 更新对话，添加新的累积summary
+              setConversations((prevConvs) =>
+                prevConvs.map((conv) => {
+                  if (conv.id === currentConversationId) {
+                    return {
+                      ...conv,
+                      memorySummaries: [...(conv.memorySummaries || []), newSummary],
+                      updatedAt: new Date(),
+                    };
+                  }
+                  return conv;
+                })
+              );
+            }
+          } catch (summaryError) {
+            console.error('Failed to generate summary:', summaryError);
+            // summary生成失败不影响主流程
+          }
+        }
+      }
     } catch (error: any) {
       console.error('Error calling API:', error);
 
@@ -253,6 +352,42 @@ export function ChatView() {
 
   const handleStop = () => {
     setIsLoading(false);
+  };
+
+  const handleEditMessage = (messageId: string, newContent: string) => {
+    if (!currentConversationId) return;
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            messages: conv.messages.map((msg) =>
+              msg.id === messageId ? { ...msg, content: newContent } : msg
+            ),
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+  };
+
+  const handleSaveContextSettings = (contextWindowSize: number) => {
+    if (!currentConversationId) return;
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            contextWindowSize,
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
   };
 
   const handleNewConversation = () => {
@@ -345,6 +480,15 @@ export function ChatView() {
                   {currentSystemPrompt?.name || '系统提示词'}
                 </span>
               </button>
+              {/* 上下文按钮 */}
+              <button
+                onClick={() => setIsContextDialogOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
+                title="查看上下文"
+              >
+                <History className="h-4 w-4" />
+                <span className="text-sm font-medium">上下文</span>
+              </button>
               <ThemeToggle />
             </div>
           </div>
@@ -352,7 +496,10 @@ export function ChatView() {
 
         {/* 消息列表 */}
         <div className="flex-1 overflow-hidden">
-          <MessageList messages={currentConversation?.messages || []} />
+          <MessageList
+            messages={currentConversation?.messages || []}
+            onEditMessage={handleEditMessage}
+          />
         </div>
 
         {/* 输入框 */}
@@ -370,6 +517,17 @@ export function ChatView() {
         currentPromptId={currentConversation?.systemPromptId}
         onSelectPrompt={handleSelectSystemPrompt}
       />
+
+      {/* 上下文对话框 */}
+      <ContextDialog
+        isOpen={isContextDialogOpen}
+        onClose={() => setIsContextDialogOpen(false)}
+        messages={currentConversation?.messages || []}
+        memorySummaries={currentConversation?.memorySummaries || []}
+        contextWindowSize={currentConversation?.contextWindowSize || 10}
+        onSaveSettings={handleSaveContextSettings}
+        onEditMessage={handleEditMessage}
+      />
     </div>
   );
 }
@@ -380,6 +538,8 @@ function createNewConversation(): Conversation {
     id: Date.now().toString(),
     title: 'New Chat',
     messages: [],
+    memorySummaries: [],
+    contextWindowSize: 10,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

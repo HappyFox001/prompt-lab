@@ -4,21 +4,41 @@ import { Message as MessageType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Sparkles, Copy, Check } from 'lucide-react';
+import { User, Sparkles, Copy, Check, Edit2, X, Save } from 'lucide-react';
 import { useState } from 'react';
 
 interface MessageProps {
   message: MessageType;
+  onEdit?: (messageId: string, newContent: string) => void;
 }
 
-export function Message({ message }: MessageProps) {
+export function Message({ message, onEdit }: MessageProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleStartEdit = () => {
+    setEditContent(message.content);
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (editContent.trim() && onEdit) {
+      onEdit(message.id, editContent.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setEditContent(message.content);
+    setIsEditing(false);
   };
 
   return (
@@ -49,30 +69,67 @@ export function Message({ message }: MessageProps) {
 
         {/* 消息内容 */}
         <div className="flex-1 min-w-0 space-y-2">
-          {/* 角色标签 */}
+          {/* 角色标签和操作按钮 */}
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-text-primary">
               {isUser ? 'You' : 'AI'}
             </span>
-            {!isUser && message.content && (
-              <button
-                onClick={handleCopy}
-                className="opacity-0 group-hover:opacity-100 rounded-lg p-2 hover:bg-surface-hover transition-all duration-200"
-                aria-label="复制消息"
-                title="复制消息"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" strokeWidth={2} />
-                ) : (
-                  <Copy className="h-4 w-4 text-text-tertiary hover:text-text-secondary" strokeWidth={2} />
-                )}
-              </button>
-            )}
+            <div className="flex gap-1">
+              {isUser && onEdit && !isEditing && (
+                <button
+                  onClick={handleStartEdit}
+                  className="opacity-0 group-hover:opacity-100 rounded-lg p-2 hover:bg-surface-hover transition-all duration-200"
+                  aria-label="编辑消息"
+                  title="编辑消息"
+                >
+                  <Edit2 className="h-4 w-4 text-text-tertiary hover:text-text-secondary" strokeWidth={2} />
+                </button>
+              )}
+              {!isUser && message.content && (
+                <button
+                  onClick={handleCopy}
+                  className="opacity-0 group-hover:opacity-100 rounded-lg p-2 hover:bg-surface-hover transition-all duration-200"
+                  aria-label="复制消息"
+                  title="复制消息"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" strokeWidth={2} />
+                  ) : (
+                    <Copy className="h-4 w-4 text-text-tertiary hover:text-text-secondary" strokeWidth={2} />
+                  )}
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* 消息文本 */}
+          {/* 消息文本或编辑框 */}
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            {isUser ? (
+            {isUser && isEditing ? (
+              <div className="space-y-2">
+                <textarea
+                  value={editContent}
+                  onChange={(e) => setEditContent(e.target.value)}
+                  className="w-full min-h-[100px] p-3 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/20 resize-y"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveEdit}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors text-sm"
+                  >
+                    <Save className="h-3.5 w-3.5" />
+                    保存
+                  </button>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-surface-secondary text-text-secondary rounded-lg hover:bg-surface-hover transition-colors text-sm"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    取消
+                  </button>
+                </div>
+              </div>
+            ) : isUser ? (
               <p className="text-text-primary whitespace-pre-wrap leading-relaxed m-0">
                 {message.content}
               </p>

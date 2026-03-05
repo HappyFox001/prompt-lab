@@ -7,9 +7,10 @@ import { useEffect, useRef } from 'react';
 
 interface MessageListProps {
   messages: MessageType[];
+  onEditMessage?: (messageId: string, newContent: string) => void;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, onEditMessage }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // 自动滚动到底部
@@ -26,7 +27,7 @@ export function MessageList({ messages }: MessageListProps) {
     <ScrollArea className="h-full">
       <div className="flex flex-col">
         {messages.map((message) => (
-          <Message key={message.id} message={message} />
+          <Message key={message.id} message={message} onEdit={onEditMessage} />
         ))}
         <div ref={bottomRef} />
       </div>
