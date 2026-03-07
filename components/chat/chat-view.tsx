@@ -763,14 +763,9 @@ export function ChatView() {
         messages={currentConversation?.messages || []}
         memorySummary={currentConversation?.memorySummary}
         contextWindowSize={currentConversation?.contextWindowSize || 10}
-        numericStates={currentConversation?.numericStates || []}
-        memoryEvents={currentConversation?.memoryEvents || []}
-        enableEventMemory={currentConversation?.enableEventMemory || false}
         onSaveSettings={handleSaveContextSettings}
         onEditMessage={handleEditMessage}
         onUpdateSummary={handleManualUpdateSummary}
-        onUpdateStates={handleUpdateStates}
-        onToggleEventMemory={handleToggleEventMemory}
       />
 
       {/* 数值状态对话框 */}
