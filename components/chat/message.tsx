@@ -221,12 +221,12 @@ export function Message({ message, onEdit }: MessageProps) {
                   {/* 重要性指示器 */}
                   <div className="flex-shrink-0 flex flex-col items-center gap-1">
                     <div className="flex items-center gap-0.5">
-                      {Array.from({ length: Math.min(message.metadata.event.importance, 10) }).map((_, i) => (
+                      {Array.from({ length: Math.min(message.metadata?.event?.importance || 0, 10) }).map((_, i) => (
                         <Star
                           key={i}
                           className={cn(
                             'h-3 w-3',
-                            i < Math.ceil(message.metadata.event.importance / 2)
+                            i < Math.ceil((message.metadata?.event?.importance || 0) / 2)
                               ? 'text-amber-500 fill-amber-500'
                               : 'text-amber-300 dark:text-amber-700'
                           )}
@@ -234,13 +234,13 @@ export function Message({ message, onEdit }: MessageProps) {
                       ))}
                     </div>
                     <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">
-                      重要度 {message.metadata.event.importance}
+                      重要度 {message.metadata?.event?.importance || 0}
                     </span>
                   </div>
 
                   {/* 事件描述 */}
                   <p className="flex-1 text-sm text-text-primary leading-relaxed font-medium">
-                    {message.metadata.event.description}
+                    {message.metadata?.event?.description || ''}
                   </p>
                 </div>
               </div>
