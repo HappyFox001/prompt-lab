@@ -4,7 +4,7 @@ import { Message as MessageType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Sparkles, Copy, Check, Edit2, X, Save } from 'lucide-react';
+import { User, Sparkles, Copy, Check, Edit2, X, Save, TrendingUp, TrendingDown, Calendar, Star } from 'lucide-react';
 import { useState } from 'react';
 
 interface MessageProps {
@@ -48,7 +48,7 @@ export function Message({ message, onEdit }: MessageProps) {
         !isUser && 'bg-surface-message hover:bg-surface-message-hover'
       )}
     >
-      <div className="mx-auto flex max-w-3xl gap-6">
+      <div className="flex max-w-4xl gap-6 pl-4">
         {/* 头像 */}
         <div className="flex-shrink-0">
           <div
@@ -141,6 +141,111 @@ export function Message({ message, onEdit }: MessageProps) {
               </div>
             )}
           </div>
+
+          {/* 状态更新显示 */}
+          {!isUser && message.metadata?.stateUpdates && message.metadata.stateUpdates.length > 0 && (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide flex items-center gap-1.5">
+                <TrendingUp className="h-3 w-3" />
+                状态变化
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {message.metadata.stateUpdates.map((update, idx) => (
+                  <div
+                    key={idx}
+                    className={cn(
+                      'inline-flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 hover:shadow-md',
+                      update.delta > 0
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-700'
+                        : update.delta < 0
+                        ? 'bg-red-50 dark:bg-red-950/30 border-red-300 dark:border-red-700'
+                        : 'bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'flex items-center justify-center h-6 w-6 rounded-full',
+                        update.delta > 0
+                          ? 'bg-emerald-100 dark:bg-emerald-900/50'
+                          : update.delta < 0
+                          ? 'bg-red-100 dark:bg-red-900/50'
+                          : 'bg-gray-100 dark:bg-gray-700'
+                      )}
+                    >
+                      {update.delta > 0 ? (
+                        <TrendingUp className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
+                      ) : update.delta < 0 ? (
+                        <TrendingDown className="h-3.5 w-3.5 text-red-600 dark:text-red-400" strokeWidth={2.5} />
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-medium text-text-secondary">
+                        {update.stateName}
+                      </span>
+                      <div className="flex items-baseline gap-1.5">
+                        <span
+                          className={cn(
+                            'text-sm font-bold',
+                            update.delta > 0
+                              ? 'text-emerald-700 dark:text-emerald-300'
+                              : update.delta < 0
+                              ? 'text-red-700 dark:text-red-300'
+                              : 'text-gray-700 dark:text-gray-300'
+                          )}
+                        >
+                          {update.delta > 0 ? '+' : ''}{update.delta}
+                        </span>
+                        <span className="text-xs text-text-tertiary">
+                          → {update.newValue}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 事件记录显示 */}
+          {!isUser && message.metadata?.event && (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide flex items-center gap-1.5">
+                <Calendar className="h-3 w-3" />
+                事件记录
+              </div>
+              <div className="relative overflow-hidden rounded-lg border border-amber-300 dark:border-amber-700 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 p-4 shadow-sm hover:shadow-md transition-all duration-200">
+                {/* 装饰性背景光效 */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-yellow-200 dark:bg-yellow-600 rounded-full blur-3xl opacity-10 -z-10" />
+
+                <div className="flex items-start gap-3">
+                  {/* 重要性指示器 */}
+                  <div className="flex-shrink-0 flex flex-col items-center gap-1">
+                    <div className="flex items-center gap-0.5">
+                      {Array.from({ length: Math.min(message.metadata.event.importance, 10) }).map((_, i) => (
+                        <Star
+                          key={i}
+                          className={cn(
+                            'h-3 w-3',
+                            i < Math.ceil(message.metadata.event.importance / 2)
+                              ? 'text-amber-500 fill-amber-500'
+                              : 'text-amber-300 dark:text-amber-700'
+                          )}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400">
+                      重要度 {message.metadata.event.importance}
+                    </span>
+                  </div>
+
+                  {/* 事件描述 */}
+                  <p className="flex-1 text-sm text-text-primary leading-relaxed font-medium">
+                    {message.metadata.event.description}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

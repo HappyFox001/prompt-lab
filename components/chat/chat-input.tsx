@@ -2,7 +2,7 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Square } from 'lucide-react';
+import { Send, Square, Activity, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
@@ -10,9 +10,11 @@ interface ChatInputProps {
   disabled?: boolean;
   isLoading?: boolean;
   onStop?: () => void;
+  onOpenStates?: () => void;
+  onOpenEvents?: () => void;
 }
 
-export function ChatInput({ onSend, disabled, isLoading, onStop }: ChatInputProps) {
+export function ChatInput({ onSend, disabled, isLoading, onStop, onOpenStates, onOpenEvents }: ChatInputProps) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -39,9 +41,31 @@ export function ChatInput({ onSend, disabled, isLoading, onStop }: ChatInputProp
   };
 
   return (
-    <div className="bg-surface-primary px-6 py-6">
-      <div className="mx-auto max-w-3xl">
-        <div className="relative flex items-end gap-3">
+    <div className="bg-surface-primary px-6 py-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="relative flex items-center gap-2">
+          {/* 左侧功能按钮 */}
+          <div className="flex gap-1">
+            {onOpenStates && (
+              <button
+                onClick={onOpenStates}
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border-light bg-surface-secondary text-text-tertiary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all"
+                title="数值状态"
+              >
+                <Activity className="h-4 w-4" strokeWidth={2} />
+              </button>
+            )}
+            {onOpenEvents && (
+              <button
+                onClick={onOpenEvents}
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border-light bg-surface-secondary text-text-tertiary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all"
+                title="事件记忆"
+              >
+                <Calendar className="h-4 w-4" strokeWidth={2} />
+              </button>
+            )}
+          </div>
+
           {/* 输入框容器 */}
           <div className="relative flex-1">
             <textarea
@@ -53,7 +77,7 @@ export function ChatInput({ onSend, disabled, isLoading, onStop }: ChatInputProp
               disabled={disabled || isLoading}
               rows={1}
               className={cn(
-                'w-full resize-none rounded-2xl border bg-surface-primary px-5 py-3.5 text-text-primary placeholder:text-text-tertiary transition-all duration-200',
+                'w-full resize-none rounded-xl border bg-surface-primary px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary transition-all duration-200',
                 'max-h-[200px] overflow-y-auto leading-relaxed',
                 'focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
                 (disabled || isLoading)
@@ -68,7 +92,7 @@ export function ChatInput({ onSend, disabled, isLoading, onStop }: ChatInputProp
             <Button
               variant="submit"
               onClick={onStop}
-              className="h-11 w-11 shrink-0 rounded-xl p-0 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
+              className="h-10 w-10 shrink-0 rounded-lg p-0 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
               aria-label="停止生成"
             >
               <Square className="h-4 w-4" fill="currentColor" strokeWidth={2} />
@@ -79,7 +103,7 @@ export function ChatInput({ onSend, disabled, isLoading, onStop }: ChatInputProp
               onClick={handleSubmit}
               disabled={!input.trim() || disabled}
               className={cn(
-                'h-11 w-11 shrink-0 rounded-xl p-0 shadow-md transition-all duration-200',
+                'h-10 w-10 shrink-0 rounded-lg p-0 shadow-md transition-all duration-200',
                 input.trim() && !disabled
                   ? 'hover:scale-105 active:scale-95 hover:shadow-lg'
                   : 'opacity-40 cursor-not-allowed'

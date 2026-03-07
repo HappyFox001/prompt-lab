@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 import { ModelSelector } from './model-selector';
@@ -9,8 +9,11 @@ import { Sidebar } from '@/components/sidebar/sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SystemPromptDialog } from './system-prompt-dialog';
 import { ContextDialog } from './context-dialog';
+import { StatesDialog } from './states-dialog';
+import { EventsDialog } from './events-dialog';
 import { indexedDB_storage } from '@/lib/indexeddb';
 import { FileText, History } from 'lucide-react';
+import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -19,6 +22,8 @@ export function ChatView() {
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
   const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
+  const [isStatesDialogOpen, setIsStatesDialogOpen] = useState(false);
+  const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<SystemPrompt | null>(null);
 
   // 初始化：从 IndexedDB 加载或创建新对话
@@ -178,7 +183,22 @@ export function ChatView() {
         });
       }
 
-      // 3. 添加最近的消息
+      // 3. 添加状态和事件信息
+      const numericStates = currentConv.numericStates || [];
+      const memoryEvents = currentConv.memoryEvents || [];
+      const enableEventMemory = currentConv.enableEventMemory || false;
+
+      if (numericStates.length > 0 || (enableEventMemory && memoryEvents.length > 0)) {
+        const contextPrompt = buildContextPrompt(numericStates, memoryEvents, enableEventMemory);
+        if (contextPrompt) {
+          contextMessages.push({
+            role: 'system',
+            content: `当前状态信息：\n\n${contextPrompt}`,
+          });
+        }
+      }
+
+      // 4. 添加最近的消息
       const messagesToSend = [
         ...contextMessages,
         ...recentMessages.map((msg) => ({
@@ -186,6 +206,30 @@ export function ChatView() {
           content: msg.content,
         })),
       ];
+
+      // 5. 在最后添加输出格式说明（让LLM更容易遵守格式）
+      const hasStates = numericStates.length > 0;
+      const formatInstruction = buildOutputFormatInstruction(hasStates, enableEventMemory);
+      if (formatInstruction) {
+        messagesToSend.push({
+          role: 'system',
+          content: formatInstruction,
+        });
+      }
+
+      // 调试：打印完整的消息内容
+      console.log('=== 发送给LLM的完整Prompt ===');
+      console.log('系统提示词数量:', contextMessages.length);
+      console.log('最近消息数量:', recentMessages.length);
+      console.log('状态数量:', numericStates.length);
+      console.log('事件数量:', memoryEvents.length);
+      console.log('事件记忆开启:', enableEventMemory);
+      console.log('\n完整消息列表:');
+      messagesToSend.forEach((msg, idx) => {
+        console.log(`\n[${idx}] ${msg.role.toUpperCase()}:`);
+        console.log(msg.content.substring(0, 500) + (msg.content.length > 500 ? '...' : ''));
+      });
+      console.log('\n=================================\n');
 
       // 调用 API
       const response = await fetch('/api/chat', {
@@ -254,6 +298,108 @@ export function ChatView() {
             }
           }
         }
+      }
+
+      // 流式响应完成后，解析XML并更新状态和事件
+      const parsed = parseLLMResponse(fullContent);
+
+      // 提取纯内容（不含XML标签）
+      const cleanContent = parsed.content || fullContent;
+
+      // 获取当前对话以便构建metadata
+      const convForMetadata = conversations.find((c) => c.id === currentConversationId);
+
+      // 构建消息metadata
+      let metadata: any = undefined;
+
+      // 应用状态更新并构建stateUpdates metadata
+      if (parsed.stateUpdates.length > 0 && convForMetadata?.numericStates) {
+        const updatedStates = applyStateUpdates(convForMetadata.numericStates, parsed.stateUpdates);
+
+        console.log('[State] 状态更新:', parsed.stateUpdates);
+
+        // 构建详细的状态更新信息
+        const stateUpdatesMetadata = parsed.stateUpdates.map((update) => {
+          const state = convForMetadata.numericStates?.find((s) => s.id === update.id);
+          const updatedState = updatedStates.find((s) => s.id === update.id);
+          return {
+            id: update.id,
+            delta: update.delta,
+            stateName: state?.name || update.id,
+            newValue: updatedState?.value || 0,
+            color: state?.color,
+          };
+        });
+
+        metadata = { ...metadata, stateUpdates: stateUpdatesMetadata };
+
+        // 更新对话的数值化状态
+        setConversations((prevConvs) =>
+          prevConvs.map((conv) => {
+            if (conv.id === currentConversationId) {
+              return {
+                ...conv,
+                numericStates: updatedStates,
+                updatedAt: new Date(),
+              };
+            }
+            return conv;
+          })
+        );
+      }
+
+      // 添加事件到metadata
+      if (parsed.event && enableEventMemory) {
+        metadata = {
+          ...metadata,
+          event: {
+            importance: parsed.event.importance,
+            description: parsed.event.description,
+          },
+        };
+      }
+
+      // 更新消息内容为纯文本（移除XML标签）并添加metadata
+      setConversations((prevConvs) =>
+        prevConvs.map((conv) => {
+          if (conv.id === currentConversationId) {
+            return {
+              ...conv,
+              messages: conv.messages.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: cleanContent, metadata }
+                  : msg
+              ),
+              updatedAt: new Date(),
+            };
+          }
+          return conv;
+        })
+      );
+
+      // 添加事件记录
+      if (parsed.event && enableEventMemory) {
+        const newEvent: MemoryEvent = {
+          id: Date.now().toString(),
+          timestamp: new Date(),
+          content: parsed.event.description,
+          importance: parsed.event.importance,
+        };
+
+        console.log('[Event] 新事件:', newEvent);
+
+        setConversations((prevConvs) =>
+          prevConvs.map((conv) => {
+            if (conv.id === currentConversationId) {
+              return {
+                ...conv,
+                memoryEvents: [...(conv.memoryEvents || []), newEvent],
+                updatedAt: new Date(),
+              };
+            }
+            return conv;
+          })
+        );
       }
 
       // 流式响应完成后，检查是否需要生成summary（固定每5轮）
@@ -446,6 +592,40 @@ export function ChatView() {
     );
   };
 
+  const handleUpdateStates = (states: NumericState[]) => {
+    if (!currentConversationId) return;
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            numericStates: states,
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+  };
+
+  const handleToggleEventMemory = (enabled: boolean) => {
+    if (!currentConversationId) return;
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            enableEventMemory: enabled,
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+  };
+
   const handleNewConversation = () => {
     const newConv = createNewConversation();
     setConversations((prev) => [newConv, ...prev]);
@@ -519,7 +699,7 @@ export function ChatView() {
       <div className="flex flex-1 flex-col">
         {/* 头部 - 优化样式，移除边框 */}
         <header className="bg-surface-primary px-6 py-3 sticky top-0 z-10">
-          <div className="mx-auto flex max-w-4xl items-center justify-between">
+          <div className="flex items-center justify-between">
             <ModelSelector
               selectedModelId={selectedModelId}
               onModelChange={setSelectedModelId}
@@ -563,6 +743,8 @@ export function ChatView() {
           onSend={handleSend}
           isLoading={isLoading}
           onStop={handleStop}
+          onOpenStates={() => setIsStatesDialogOpen(true)}
+          onOpenEvents={() => setIsEventsDialogOpen(true)}
         />
       </div>
 
@@ -581,9 +763,31 @@ export function ChatView() {
         messages={currentConversation?.messages || []}
         memorySummary={currentConversation?.memorySummary}
         contextWindowSize={currentConversation?.contextWindowSize || 10}
+        numericStates={currentConversation?.numericStates || []}
+        memoryEvents={currentConversation?.memoryEvents || []}
+        enableEventMemory={currentConversation?.enableEventMemory || false}
         onSaveSettings={handleSaveContextSettings}
         onEditMessage={handleEditMessage}
         onUpdateSummary={handleManualUpdateSummary}
+        onUpdateStates={handleUpdateStates}
+        onToggleEventMemory={handleToggleEventMemory}
+      />
+
+      {/* 数值状态对话框 */}
+      <StatesDialog
+        isOpen={isStatesDialogOpen}
+        onClose={() => setIsStatesDialogOpen(false)}
+        states={currentConversation?.numericStates || []}
+        onUpdateStates={handleUpdateStates}
+      />
+
+      {/* 事件记忆对话框 */}
+      <EventsDialog
+        isOpen={isEventsDialogOpen}
+        onClose={() => setIsEventsDialogOpen(false)}
+        events={currentConversation?.memoryEvents || []}
+        enabled={currentConversation?.enableEventMemory || false}
+        onToggle={handleToggleEventMemory}
       />
     </div>
   );
@@ -596,6 +800,9 @@ function createNewConversation(): Conversation {
     title: 'New Chat',
     messages: [],
     contextWindowSize: 10,
+    numericStates: [],
+    memoryEvents: [],
+    enableEventMemory: false,
     createdAt: new Date(),
     updatedAt: new Date(),
   };

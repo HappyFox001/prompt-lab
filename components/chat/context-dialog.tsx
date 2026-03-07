@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { X, History, Settings, Sparkles, User, Edit2, Save, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
-import { Message, MemorySummary } from '@/lib/types';
+import { X, History, Settings, Sparkles, User, Edit2, Save, ChevronDown, ChevronUp, RefreshCw, Brain } from 'lucide-react';
+import { Message, MemorySummary, NumericState, MemoryEvent } from '@/lib/types';
+import { StateManager } from './state-manager';
+import { EventMemory } from './event-memory';
 import { cn } from '@/lib/utils';
 
 interface ContextDialogProps {
@@ -12,12 +14,17 @@ interface ContextDialogProps {
   messages: Message[];
   memorySummary?: MemorySummary;
   contextWindowSize: number;
+  numericStates: NumericState[];
+  memoryEvents: MemoryEvent[];
+  enableEventMemory: boolean;
   onSaveSettings: (contextWindowSize: number) => void;
   onEditMessage?: (messageId: string, newContent: string) => void;
   onUpdateSummary?: () => Promise<void>;
+  onUpdateStates?: (states: NumericState[]) => void;
+  onToggleEventMemory?: (enabled: boolean) => void;
 }
 
-type Tab = 'history' | 'settings';
+type Tab = 'history' | 'settings' | 'memory';
 
 export function ContextDialog({
   isOpen,
@@ -25,9 +32,14 @@ export function ContextDialog({
   messages,
   memorySummary,
   contextWindowSize,
+  numericStates,
+  memoryEvents,
+  enableEventMemory,
   onSaveSettings,
   onEditMessage,
   onUpdateSummary,
+  onUpdateStates,
+  onToggleEventMemory,
 }: ContextDialogProps) {
   const [activeTab, setActiveTab] = useState<Tab>('history');
   const [windowSize, setWindowSize] = useState(contextWindowSize);
@@ -103,6 +115,20 @@ export function ContextDialog({
             </div>
           </button>
           <button
+            onClick={() => setActiveTab('memory')}
+            className={cn(
+              'px-4 py-2 rounded-t-lg text-sm font-medium transition-all',
+              activeTab === 'memory'
+                ? 'bg-surface-secondary text-text-primary border-b-2 border-accent'
+                : 'text-text-tertiary hover:text-text-secondary hover:bg-surface-hover'
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <Brain className="h-4 w-4" />
+              状态与记忆
+            </div>
+          </button>
+          <button
             onClick={() => setActiveTab('settings')}
             className={cn(
               'px-4 py-2 rounded-t-lg text-sm font-medium transition-all',
@@ -128,6 +154,14 @@ export function ContextDialog({
                 recentMessageIds={recentMessageIds}
                 summarizedUpToIndex={summarizedUpToIndex}
                 onEditMessage={onEditMessage}
+              />
+            ) : activeTab === 'memory' ? (
+              <MemoryTab
+                numericStates={numericStates}
+                memoryEvents={memoryEvents}
+                enableEventMemory={enableEventMemory}
+                onUpdateStates={onUpdateStates}
+                onToggleEventMemory={onToggleEventMemory}
               />
             ) : (
               <SettingsTab
@@ -412,6 +446,58 @@ function HistoryTab({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// 状态与记忆标签页
+function MemoryTab({
+  numericStates,
+  memoryEvents,
+  enableEventMemory,
+  onUpdateStates,
+  onToggleEventMemory,
+}: {
+  numericStates: NumericState[];
+  memoryEvents: MemoryEvent[];
+  enableEventMemory: boolean;
+  onUpdateStates?: (states: NumericState[]) => void;
+  onToggleEventMemory?: (enabled: boolean) => void;
+}) {
+  return (
+    <div className="space-y-6 max-w-3xl mx-auto">
+      {/* 数值化状态 */}
+      <div>
+        <h3 className="text-sm font-semibold text-text-primary mb-3">数值化状态</h3>
+        <p className="text-xs text-text-tertiary mb-4">
+          AI会根据对话内容自动更新这些状态值，并将其作为上下文参考
+        </p>
+        {onUpdateStates ? (
+          <StateManager states={numericStates} onUpdateStates={onUpdateStates} />
+        ) : (
+          <div className="text-sm text-text-tertiary">无法编辑状态</div>
+        )}
+      </div>
+
+      {/* 分隔线 */}
+      <div className="border-t border-border-light" />
+
+      {/* 事件记忆 */}
+      <div>
+        <h3 className="text-sm font-semibold text-text-primary mb-3">事件记忆</h3>
+        <p className="text-xs text-text-tertiary mb-4">
+          AI会自动提取并记录重要的对话事件，形成长期记忆
+        </p>
+        {onToggleEventMemory ? (
+          <EventMemory
+            events={memoryEvents}
+            enabled={enableEventMemory}
+            onToggle={onToggleEventMemory}
+          />
+        ) : (
+          <div className="text-sm text-text-tertiary">无法编辑事件记忆</div>
+        )}
       </div>
     </div>
   );
