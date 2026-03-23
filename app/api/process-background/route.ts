@@ -235,7 +235,11 @@ function parseAnalysisResponse(
   event?: { importance: number; description: string };
   summary?: string;
 } {
-  const result: any = {};
+  const result: {
+    stateUpdates?: Array<{ id: string; delta: number; reason?: string }>;
+    event?: { importance: number; description: string };
+    summary?: string;
+  } = {};
 
   try {
     // 提取状态更新（使用 [\s\S] 代替 . 和 s 标志，兼容性更好）

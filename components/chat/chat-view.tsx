@@ -367,7 +367,7 @@ export function ChatView() {
                         newValue: updatedState?.value || 0,
                         color: state?.color,
                       };
-                    }).filter(u => u.stateName); // 过滤掉没有名称的
+                    }).filter((u: { stateName: string }) => u.stateName); // 过滤掉没有名称的
 
                     console.log('[状态更新]', stateUpdatesMetadata);
 
