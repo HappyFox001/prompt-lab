@@ -211,8 +211,8 @@ function parseAnalysisResponse(response: string): {
   const result: any = {};
 
   try {
-    // 提取状态更新
-    const stateUpdatesMatch = response.match(/<state_updates>(.*?)<\/state_updates>/s);
+    // 提取状态更新（使用 [\s\S] 代替 . 和 s 标志，兼容性更好）
+    const stateUpdatesMatch = response.match(/<state_updates>([\s\S]*?)<\/state_updates>/);
     if (stateUpdatesMatch) {
       const updates = [];
       const updateRegex = /<update id="([^"]+)" delta="([^"]+)"(?: reason="([^"]+)")? \/>/g;
@@ -230,7 +230,7 @@ function parseAnalysisResponse(response: string): {
     }
 
     // 提取事件
-    const eventMatch = response.match(/<event>\s*<importance>(\d+)<\/importance>\s*<description>(.*?)<\/description>\s*<\/event>/s);
+    const eventMatch = response.match(/<event>\s*<importance>(\d+)<\/importance>\s*<description>([\s\S]*?)<\/description>\s*<\/event>/);
     if (eventMatch) {
       result.event = {
         importance: parseInt(eventMatch[1]),
@@ -239,7 +239,7 @@ function parseAnalysisResponse(response: string): {
     }
 
     // 提取总结
-    const summaryMatch = response.match(/<summary>(.*?)<\/summary>/s);
+    const summaryMatch = response.match(/<summary>([\s\S]*?)<\/summary>/);
     if (summaryMatch) {
       result.summary = summaryMatch[1].trim();
     }
