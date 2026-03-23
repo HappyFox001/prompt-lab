@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
-import { ModelSelector } from './model-selector';
+// ModelSelector 已移除（双层架构使用固定模型）
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SystemPromptDialog } from './system-prompt-dialog';
@@ -19,7 +19,7 @@ export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedModelId, setSelectedModelId] = useState<string>('');
+  // selectedModelId 已移除（双层架构使用固定模型）
   const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
   const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
   const [isStatesDialogOpen, setIsStatesDialogOpen] = useState(false);
@@ -29,19 +29,7 @@ export function ChatView() {
   // 初始化：从 IndexedDB 加载或创建新对话
   useEffect(() => {
     async function loadData() {
-      // 加载默认模型
-      try {
-        const res = await fetch('/api/models');
-        if (!res.ok) {
-          const errorText = await res.text();
-          console.error('Failed to load models:', res.status, errorText);
-          return;
-        }
-        const data = await res.json();
-        setSelectedModelId(data.defaultModelId || data.models[0]?.id || '');
-      } catch (error) {
-        console.error('Failed to load default model:', error);
-      }
+      // 双层架构：不再需要加载模型配置
 
       // 加载对话历史
       const saved = await indexedDB_storage.getConversations();
@@ -96,7 +84,7 @@ export function ChatView() {
   );
 
   const handleSend = async (content: string) => {
-    if (!currentConversationId || !selectedModelId) return;
+    if (!currentConversationId) return;
 
     // 添加用户消息
     const userMessage: Message = {
@@ -231,15 +219,15 @@ export function ChatView() {
       });
       console.log('\n=================================\n');
 
-      // 调用 API
-      const response = await fetch('/api/chat', {
+      // 调用双层架构 API（第一层：快速响应）
+      const response = await fetch('/api/chat-dual', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           messages: messagesToSend,
-          modelId: selectedModelId,
+          conversationId: currentConversationId,
         }),
       });
 
@@ -257,6 +245,7 @@ export function ChatView() {
       }
 
       let fullContent = '';
+      let emotionalState = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -272,6 +261,8 @@ export function ChatView() {
 
             try {
               const parsed = JSON.parse(data);
+
+              // 处理文本内容
               if (parsed.content) {
                 fullContent += parsed.content;
 
@@ -293,6 +284,12 @@ export function ChatView() {
                   })
                 );
               }
+
+              // 处理情感状态
+              if (parsed.emotionalState) {
+                emotionalState = parsed.emotionalState;
+                console.log('[情感状态]', emotionalState);
+              }
             } catch (e) {
               // 忽略解析错误
             }
@@ -300,46 +297,18 @@ export function ChatView() {
         }
       }
 
-      // 流式响应完成后，解析XML并更新状态和事件
-      const parsed = parseLLMResponse(fullContent);
-
-      // 提取纯内容（不含XML标签）
-      const cleanContent = parsed.content || fullContent;
-
-      // 获取当前对话以便构建metadata
-      const convForMetadata = conversations.find((c) => c.id === currentConversationId);
-
-      // 构建消息metadata
-      let metadata: any = undefined;
-
-      // 应用状态更新并构建stateUpdates metadata
-      if (parsed.stateUpdates.length > 0 && convForMetadata?.numericStates) {
-        const updatedStates = applyStateUpdates(convForMetadata.numericStates, parsed.stateUpdates);
-
-        console.log('[State] 状态更新:', parsed.stateUpdates);
-
-        // 构建详细的状态更新信息
-        const stateUpdatesMetadata = parsed.stateUpdates.map((update) => {
-          const state = convForMetadata.numericStates?.find((s) => s.id === update.id);
-          const updatedState = updatedStates.find((s) => s.id === update.id);
-          return {
-            id: update.id,
-            delta: update.delta,
-            stateName: state?.name || update.id,
-            newValue: updatedState?.value || 0,
-            color: state?.color,
-          };
-        });
-
-        metadata = { ...metadata, stateUpdates: stateUpdatesMetadata };
-
-        // 更新对话的数值化状态
+      // 流式响应完成后，保存情感状态
+      if (emotionalState) {
         setConversations((prevConvs) =>
           prevConvs.map((conv) => {
             if (conv.id === currentConversationId) {
               return {
                 ...conv,
-                numericStates: updatedStates,
+                messages: conv.messages.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, emotionalState }
+                    : msg
+                ),
                 updatedAt: new Date(),
               };
             }
@@ -348,62 +317,150 @@ export function ChatView() {
         );
       }
 
-      // 添加事件到metadata
-      if (parsed.event && enableEventMemory) {
-        metadata = {
-          ...metadata,
-          event: {
-            importance: parsed.event.importance,
-            description: parsed.event.description,
-          },
-        };
-      }
+      // ==================== 第二层：后台深度处理（延迟 3 秒触发）====================
+      setTimeout(async () => {
+        try {
+          const currentConv = conversations.find((c) => c.id === currentConversationId);
+          if (!currentConv) return;
 
-      // 更新消息内容为纯文本（移除XML标签）并添加metadata
-      setConversations((prevConvs) =>
-        prevConvs.map((conv) => {
-          if (conv.id === currentConversationId) {
-            return {
-              ...conv,
-              messages: conv.messages.map((msg) =>
-                msg.id === assistantMessageId
-                  ? { ...msg, content: cleanContent, metadata }
-                  : msg
-              ),
-              updatedAt: new Date(),
-            };
+          console.log('[后台处理] 3秒后触发深度分析...');
+
+          const bgResponse = await fetch('/api/process-background', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              conversationId: currentConversationId,
+              messages: [...currentConv.messages, { role: 'user', content }, { role: 'assistant', content: fullContent }],
+              recentResponse: fullContent,
+              numericStates: currentConv.numericStates || [],
+              memoryEvents: currentConv.memoryEvents || [],
+              previousSummary: currentConv.memorySummary?.content || '',
+            }),
+          });
+
+          if (!bgResponse.ok) {
+            throw new Error('后台处理失败');
           }
-          return conv;
-        })
-      );
 
-      // 添加事件记录
-      if (parsed.event && enableEventMemory) {
-        const newEvent: MemoryEvent = {
-          id: Date.now().toString(),
-          timestamp: new Date(),
-          content: parsed.event.description,
-          importance: parsed.event.importance,
-        };
+          const result = await bgResponse.json();
+          console.log('[后台处理] 完成:', result);
 
-        console.log('[Event] 新事件:', newEvent);
+          if (result.success && result.analysis) {
+            // 应用状态更新
+            if (result.analysis.stateUpdates && result.analysis.stateUpdates.length > 0) {
+              setConversations((prevConvs) =>
+                prevConvs.map((conv) => {
+                  if (conv.id === currentConversationId) {
+                    const updatedStates = applyStateUpdates(
+                      conv.numericStates || [],
+                      result.analysis.stateUpdates
+                    );
 
-        setConversations((prevConvs) =>
-          prevConvs.map((conv) => {
-            if (conv.id === currentConversationId) {
-              return {
-                ...conv,
-                memoryEvents: [...(conv.memoryEvents || []), newEvent],
-                updatedAt: new Date(),
-              };
+                    // 构建 metadata
+                    const stateUpdatesMetadata = result.analysis.stateUpdates.map((update: any) => {
+                      const state = conv.numericStates?.find((s) => s.id === update.id);
+                      const updatedState = updatedStates.find((s) => s.id === update.id);
+                      return {
+                        id: update.id,
+                        delta: update.delta,
+                        stateName: state?.name || update.id,
+                        newValue: updatedState?.value || 0,
+                        color: state?.color,
+                      };
+                    });
+
+                    console.log('[状态更新]', stateUpdatesMetadata);
+
+                    // 更新消息的 metadata
+                    const updatedMessages = conv.messages.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, metadata: { ...msg.metadata, stateUpdates: stateUpdatesMetadata } }
+                        : msg
+                    );
+
+                    return {
+                      ...conv,
+                      numericStates: updatedStates,
+                      messages: updatedMessages,
+                      updatedAt: new Date(),
+                    };
+                  }
+                  return conv;
+                })
+              );
             }
-            return conv;
-          })
-        );
-      }
 
-      // 流式响应完成后，检查是否需要生成summary（固定每5轮）
-      await generateSummaryIfNeeded();
+            // 添加事件
+            if (result.analysis.event && enableEventMemory) {
+              const newEvent: MemoryEvent = {
+                id: Date.now().toString(),
+                timestamp: new Date(),
+                content: result.analysis.event.description,
+                importance: result.analysis.event.importance,
+              };
+
+              console.log('[新事件]', newEvent);
+
+              setConversations((prevConvs) =>
+                prevConvs.map((conv) => {
+                  if (conv.id === currentConversationId) {
+                    // 更新消息的 metadata
+                    const updatedMessages = conv.messages.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? {
+                            ...msg,
+                            metadata: {
+                              ...msg.metadata,
+                              event: {
+                                importance: newEvent.importance,
+                                description: newEvent.content,
+                              },
+                            },
+                          }
+                        : msg
+                    );
+
+                    return {
+                      ...conv,
+                      memoryEvents: [...(conv.memoryEvents || []), newEvent],
+                      messages: updatedMessages,
+                      updatedAt: new Date(),
+                    };
+                  }
+                  return conv;
+                })
+              );
+            }
+
+            // 更新记忆总结
+            if (result.analysis.summary) {
+              setConversations((prevConvs) =>
+                prevConvs.map((conv) => {
+                  if (conv.id === currentConversationId) {
+                    return {
+                      ...conv,
+                      memorySummary: {
+                        content: result.analysis.summary,
+                        summarizedUpToIndex: conv.messages.length,
+                        lastUpdated: new Date(),
+                      },
+                      updatedAt: new Date(),
+                    };
+                  }
+                  return conv;
+                })
+              );
+
+              console.log('[记忆总结] 已更新');
+            }
+          }
+        } catch (error) {
+          console.error('[后台处理] 错误:', error);
+          // 后台处理失败不影响对话
+        }
+      }, 3000);
     } catch (error: any) {
       console.error('Error calling API:', error);
 
@@ -431,126 +488,14 @@ export function ChatView() {
     }
   };
 
-  // 手动更新摘要
+  // 手动更新摘要（双层架构中已自动处理，此函数保留以兼容 UI）
   const handleManualUpdateSummary = async () => {
-    const currentConv = conversations.find((c) => c.id === currentConversationId);
-    if (!currentConv || !selectedModelId) return;
-
-    const totalMessages = currentConv.messages.length;
-    if (totalMessages === 0) return;
-
-    const lastSummarizedIndex = currentConv.memorySummary?.summarizedUpToIndex ?? 0;
-
-    console.log('[Summary] 手动更新摘要...');
-    try {
-      const messagesToSummarize = currentConv.messages.slice(lastSummarizedIndex);
-      const previousSummary = currentConv.memorySummary?.content || null;
-
-      const summaryResponse = await fetch('/api/summary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: messagesToSummarize.map(m => ({
-            role: m.role,
-            content: m.content,
-          })),
-          modelId: selectedModelId,
-          previousSummary,
-        }),
-      });
-
-      if (summaryResponse.ok) {
-        const { summary } = await summaryResponse.json();
-        console.log('[Summary] 手动摘要生成成功');
-
-        const newSummary: MemorySummary = {
-          content: summary,
-          summarizedUpToIndex: totalMessages,
-          lastUpdated: new Date(),
-        };
-
-        setConversations((prevConvs) =>
-          prevConvs.map((conv) => {
-            if (conv.id === currentConversationId) {
-              return {
-                ...conv,
-                memorySummary: newSummary,
-                updatedAt: new Date(),
-              };
-            }
-            return conv;
-          })
-        );
-      }
-    } catch (error) {
-      console.error('[Summary] 手动生成失败:', error);
-      throw error;
-    }
+    console.log('[Summary] 双层架构中摘要已自动在后台生成，无需手动触发');
+    // 在双层架构中，摘要会在每次对话后自动在后台生成
+    // 此函数保留以兼容现有 UI，但不再执行实际操作
   };
 
-  // 生成摘要（如果需要）
-  const generateSummaryIfNeeded = async () => {
-    const currentConv = conversations.find((c) => c.id === currentConversationId);
-    if (!currentConv || !selectedModelId) return;
-
-    const SUMMARY_INTERVAL = 5; // 固定每5轮生成一次
-    const totalMessages = currentConv.messages.length;
-    const lastSummarizedIndex = currentConv.memorySummary?.summarizedUpToIndex ?? 0;
-
-    // 检查自上次summary后是否有足够的新消息（一轮对话=用户+AI两条消息）
-    const newMessageCount = totalMessages - lastSummarizedIndex;
-    const newRounds = Math.floor(newMessageCount / 2);
-
-    console.log('[Summary] 检查摘要条件:', { totalMessages, lastSummarizedIndex, newMessageCount, newRounds });
-
-    if (newRounds >= SUMMARY_INTERVAL) {
-      console.log('[Summary] 触发摘要生成...');
-      try {
-        const messagesToSummarize = currentConv.messages.slice(lastSummarizedIndex);
-        const previousSummary = currentConv.memorySummary?.content || null;
-
-        const summaryResponse = await fetch('/api/summary', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            messages: messagesToSummarize.map(m => ({
-              role: m.role,
-              content: m.content,
-            })),
-            modelId: selectedModelId,
-            previousSummary,
-          }),
-        });
-
-        if (summaryResponse.ok) {
-          const { summary } = await summaryResponse.json();
-          console.log('[Summary] 摘要生成成功:', summary.substring(0, 100) + '...');
-
-          const newSummary: MemorySummary = {
-            content: summary,
-            summarizedUpToIndex: totalMessages,
-            lastUpdated: new Date(),
-          };
-
-          // 更新对话，替换摘要
-          setConversations((prevConvs) =>
-            prevConvs.map((conv) => {
-              if (conv.id === currentConversationId) {
-                return {
-                  ...conv,
-                  memorySummary: newSummary,
-                  updatedAt: new Date(),
-                };
-              }
-              return conv;
-            })
-          );
-        }
-      } catch (summaryError) {
-        console.error('[Summary] 生成失败:', summaryError);
-      }
-    }
-  };
+  // 双层架构中摘要已自动生成，此函数已移除
 
   const handleStop = () => {
     setIsLoading(false);
@@ -700,10 +645,11 @@ export function ChatView() {
         {/* 头部 - 优化样式，移除边框 */}
         <header className="bg-surface-primary px-6 py-3 sticky top-0 z-10">
           <div className="flex items-center justify-between">
-            <ModelSelector
-              selectedModelId={selectedModelId}
-              onModelChange={setSelectedModelId}
-            />
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-text-secondary">
+                双层 LLM 架构（Flash + Pro）
+              </span>
+            </div>
             <div className="flex items-center gap-3">
               {/* 系统提示词按钮 */}
               <button

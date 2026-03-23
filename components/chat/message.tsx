@@ -6,6 +6,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { User, Sparkles, Copy, Check, Edit2, X, Save, TrendingUp, TrendingDown, Calendar, Star } from 'lucide-react';
 import { useState } from 'react';
+import { EmotionalStateBadge } from './emotional-state-badge';
 
 interface MessageProps {
   message: MessageType;
@@ -203,6 +204,16 @@ export function Message({ message, onEdit }: MessageProps) {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* 情感状态显示 */}
+          {!isUser && message.emotionalState && (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">
+                情感状态
+              </div>
+              <EmotionalStateBadge emotionalState={message.emotionalState} />
             </div>
           )}
 

@@ -1,9 +1,37 @@
+// 情感类别（与 sensory-server 保持一致）
+export type EmotionCategory =
+  | 'happy' | 'sad' | 'angry' | 'surprised' | 'fear' | 'disgust'
+  | 'neutral' | 'excited' | 'anxious' | 'thoughtful' | 'loving'
+  | 'playful' | 'curious' | 'embarrassed' | 'confident';
+
+// 情感状态（与 sensory-server 保持一致）
+export interface EmotionalState {
+  emotion: EmotionCategory;
+  intensity: number; // 0.0-1.0
+
+  // 交互意图（对应轨道二：交互响应）
+  intent?: string; // "agree", "think", "refuse", "greet", "listen"
+
+  // 情绪细节（对应轨道三：情绪表达）
+  subtext?: string; // "shy", "confident", "hesitant", "playful"
+
+  // VAD 维度（可选）
+  valence?: number;   // 效价 (-1.0 到 1.0)
+  arousal?: number;   // 唤醒度 (0.0-1.0)
+  dominance?: number; // 支配度 (0.0-1.0)
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: Date;
   isEditing?: boolean; // 是否处于编辑状态
+
+  // 新增：情感状态（第一层 LLM 输出）
+  emotionalState?: EmotionalState;
+
+  // 保留：状态更新和事件（第二层 LLM 输出）
   metadata?: {
     stateUpdates?: Array<{
       id: string;
