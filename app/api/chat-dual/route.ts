@@ -13,14 +13,25 @@ import { NextRequest } from 'next/server';
  * - 负责记忆总结、状态更新、事件提取
  */
 
+interface NumericState {
+  id: string;
+  name: string;
+  value: number;
+  min: number;
+  max: number;
+  description?: string;
+}
+
 interface ChatRequest {
   messages: Array<{ role: string; content: string }>;
   conversationId: string;
+  numericStates?: NumericState[];
+  systemPrompt?: string;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, conversationId } = await req.json() as ChatRequest;
+    const { messages, conversationId, numericStates, systemPrompt } = await req.json() as ChatRequest;
 
     // 获取 Gemini API Key
     const apiKey = process.env.GEMINI_API_KEY;
@@ -39,7 +50,7 @@ export async function POST(req: NextRequest) {
     });
 
     // 构建第一层提示词（情感识别 + 对话响应）
-    const layer1Prompt = buildLayer1Prompt(messages);
+    const layer1Prompt = buildLayer1Prompt(messages, numericStates, systemPrompt);
 
     // 流式响应
     const result = await flashModel.generateContentStream(layer1Prompt);
@@ -50,6 +61,7 @@ export async function POST(req: NextRequest) {
       async start(controller) {
         try {
           let fullResponse = '';
+          let fullTextContent = '';  // 只包含文本，不包含分隔符和情感数据
           let emotionBuffer = '';
           let inEmotionSection = false;
 
@@ -63,6 +75,7 @@ export async function POST(req: NextRequest) {
               // 输出分隔符之前的文本
               const parts = text.split('###EMOTION###');
               if (parts[0]) {
+                fullTextContent += parts[0];
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: parts[0] })}\n\n`));
               }
               if (parts[1]) {
@@ -72,9 +85,11 @@ export async function POST(req: NextRequest) {
             }
 
             if (inEmotionSection) {
+              // 在情感区域，累积到 emotionBuffer，不输出
               emotionBuffer += text;
             } else {
               // 正常文本流式输出
+              fullTextContent += text;
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`));
             }
           }
@@ -84,8 +99,9 @@ export async function POST(req: NextRequest) {
           if (emotionBuffer.trim()) {
             try {
               emotionalState = JSON.parse(emotionBuffer.trim());
+              console.log('[情感识别]', emotionalState);
             } catch (e) {
-              console.error('解析情感状态失败:', e);
+              console.error('解析情感状态失败:', e, 'Buffer:', emotionBuffer);
             }
           }
 
@@ -98,10 +114,8 @@ export async function POST(req: NextRequest) {
           controller.close();
 
           // ==================== 第二层：异步后台处理（不阻塞响应）====================
-          // 在响应完成后触发后台任务
-          triggerBackgroundProcessing(conversationId, messages, fullResponse, apiKey).catch(err => {
-            console.error('后台处理失败:', err);
-          });
+          // 注意：后台处理由前端延迟调用 /api/process-background 完成
+          // 这里不再触发，避免重复处理
 
         } catch (error) {
           console.error('Stream error:', error);
@@ -132,14 +146,27 @@ export async function POST(req: NextRequest) {
 /**
  * 构建第一层提示词（快速响应 + 情感识别）
  */
-function buildLayer1Prompt(messages: Array<{ role: string; content: string }>): string {
+function buildLayer1Prompt(
+  messages: Array<{ role: string; content: string }>,
+  numericStates?: NumericState[],
+  systemPrompt?: string
+): string {
   const conversationHistory = messages
     .slice(-10) // 只保留最近 10 条消息
     .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
     .join('\n\n');
 
-  return `你是一个友善的AI助手。请用中文回复用户，并在回复后输出情感状态。
+  // 构建状态上下文
+  const statesContext = numericStates && numericStates.length > 0
+    ? `\n## 当前状态\n\n以下是你和用户之间的关系状态，请在回复时参考这些状态，调整你的语气和态度：\n\n${numericStates.map(s =>
+        `- ${s.name}: ${s.value}/${s.max}${s.description ? ` (${s.description})` : ''}`
+      ).join('\n')}\n`
+    : '';
 
+  const basePrompt = systemPrompt || '你是一个友善的AI助手。';
+
+  return `${basePrompt}请用中文回复用户，并在回复后输出情感状态。
+${statesContext}
 ## 输出格式
 
 请按以下格式输出：
@@ -166,73 +193,4 @@ function buildLayer1Prompt(messages: Array<{ role: string; content: string }>): 
 ${conversationHistory}
 
 请回复最后一条用户消息：`;
-}
-
-/**
- * 第二层：异步后台处理（Gemini Pro 3）
- * 不阻塞主响应流程
- */
-async function triggerBackgroundProcessing(
-  conversationId: string,
-  messages: Array<{ role: string; content: string }>,
-  assistantResponse: string,
-  apiKey: string
-): Promise<void> {
-  console.log(`[后台任务] 开始处理对话 ${conversationId}`);
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const proModel = genAI.getGenerativeModel({
-    model: process.env.GEMINI_PRO_MODEL || 'gemini-3.1-pro-preview'
-  });
-
-  // 构建第二层提示词（状态更新 + 事件提取 + 记忆总结）
-  const layer2Prompt = buildLayer2Prompt(messages, assistantResponse);
-
-  try {
-    const result = await proModel.generateContent(layer2Prompt);
-    const response = result.response.text();
-
-    // 解析 XML 格式的状态更新和事件
-    // TODO: 将结果存储到数据库或通过 WebSocket 推送给前端
-
-    console.log('[后台任务] 完成:', response.substring(0, 100));
-  } catch (error) {
-    console.error('[后台任务] 错误:', error);
-  }
-}
-
-/**
- * 构建第二层提示词（深度处理）
- */
-function buildLayer2Prompt(messages: Array<{ role: string; content: string }>, assistantResponse: string): string {
-  const conversationHistory = messages
-    .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
-    .join('\n\n');
-
-  return `请分析以下对话，提取关键信息并输出结构化数据。
-
-## 对话历史
-
-${conversationHistory}
-
-AI最新回复：${assistantResponse}
-
-## 输出格式
-
-请以 XML 格式输出：
-<analysis>
-  <state_updates>
-    <update id="affection" delta="+2" />
-    <update id="trust" delta="+1" />
-  </state_updates>
-  <event>
-    <importance>7</importance>
-    <description>用户分享了个人经历</description>
-  </event>
-  <summary>
-    简短总结本轮对话的核心内容（50字以内）
-  </summary>
-</analysis>
-
-请分析并输出：`;
 }

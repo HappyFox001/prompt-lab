@@ -171,22 +171,7 @@ export function ChatView() {
         });
       }
 
-      // 3. 添加状态和事件信息
-      const numericStates = currentConv.numericStates || [];
-      const memoryEvents = currentConv.memoryEvents || [];
-      const enableEventMemory = currentConv.enableEventMemory || false;
-
-      if (numericStates.length > 0 || (enableEventMemory && memoryEvents.length > 0)) {
-        const contextPrompt = buildContextPrompt(numericStates, memoryEvents, enableEventMemory);
-        if (contextPrompt) {
-          contextMessages.push({
-            role: 'system',
-            content: `当前状态信息：\n\n${contextPrompt}`,
-          });
-        }
-      }
-
-      // 4. 添加最近的消息
+      // 3. 添加最近的消息（不再添加状态信息，由后端处理）
       const messagesToSend = [
         ...contextMessages,
         ...recentMessages.map((msg) => ({
@@ -195,23 +180,15 @@ export function ChatView() {
         })),
       ];
 
-      // 5. 在最后添加输出格式说明（让LLM更容易遵守格式）
-      const hasStates = numericStates.length > 0;
-      const formatInstruction = buildOutputFormatInstruction(hasStates, enableEventMemory);
-      if (formatInstruction) {
-        messagesToSend.push({
-          role: 'system',
-          content: formatInstruction,
-        });
-      }
+      // 注意：状态信息、事件信息、输出格式说明现在由后端自动处理
 
       // 调试：打印完整的消息内容
       console.log('=== 发送给LLM的完整Prompt ===');
       console.log('系统提示词数量:', contextMessages.length);
       console.log('最近消息数量:', recentMessages.length);
-      console.log('状态数量:', numericStates.length);
-      console.log('事件数量:', memoryEvents.length);
-      console.log('事件记忆开启:', enableEventMemory);
+      console.log('状态数量:', (currentConv.numericStates || []).length);
+      console.log('事件数量:', (currentConv.memoryEvents || []).length);
+      console.log('事件记忆开启:', currentConv.enableEventMemory || false);
       console.log('\n完整消息列表:');
       messagesToSend.forEach((msg, idx) => {
         console.log(`\n[${idx}] ${msg.role.toUpperCase()}:`);
@@ -228,6 +205,8 @@ export function ChatView() {
         body: JSON.stringify({
           messages: messagesToSend,
           conversationId: currentConversationId,
+          numericStates: currentConv.numericStates || [],
+          systemPrompt: currentSystemPrompt?.content || undefined,
         }),
       });
 
@@ -323,6 +302,15 @@ export function ChatView() {
           const currentConv = conversations.find((c) => c.id === currentConversationId);
           if (!currentConv) return;
 
+          // 检查是否需要后台处理：只在有声明状态或启用事件记忆时才触发
+          const hasStates = (currentConv.numericStates || []).length > 0;
+          const hasEventMemory = currentConv.enableEventMemory || false;
+
+          if (!hasStates && !hasEventMemory) {
+            console.log('[后台处理] 跳过：未声明状态且未启用事件记忆');
+            return;
+          }
+
           console.log('[后台处理] 3秒后触发深度分析...');
 
           const bgResponse = await fetch('/api/process-background', {
@@ -348,28 +336,38 @@ export function ChatView() {
           console.log('[后台处理] 完成:', result);
 
           if (result.success && result.analysis) {
-            // 应用状态更新
+            // 应用状态更新（只有当有声明状态时）
             if (result.analysis.stateUpdates && result.analysis.stateUpdates.length > 0) {
               setConversations((prevConvs) =>
                 prevConvs.map((conv) => {
                   if (conv.id === currentConversationId) {
-                    const updatedStates = applyStateUpdates(
-                      conv.numericStates || [],
-                      result.analysis.stateUpdates
+                    // 只处理有对应声明状态的更新
+                    const validUpdates = result.analysis.stateUpdates.filter((update: any) =>
+                      conv.numericStates?.some((s) => s.id === update.id)
                     );
 
-                    // 构建 metadata
-                    const stateUpdatesMetadata = result.analysis.stateUpdates.map((update: any) => {
+                    if (validUpdates.length === 0) {
+                      console.log('[状态更新] 跳过：没有匹配的声明状态');
+                      return conv;
+                    }
+
+                    const updatedStates = applyStateUpdates(
+                      conv.numericStates || [],
+                      validUpdates
+                    );
+
+                    // 构建 metadata - 只包含有效的更新
+                    const stateUpdatesMetadata = validUpdates.map((update: any) => {
                       const state = conv.numericStates?.find((s) => s.id === update.id);
                       const updatedState = updatedStates.find((s) => s.id === update.id);
                       return {
                         id: update.id,
                         delta: update.delta,
-                        stateName: state?.name || update.id,
+                        stateName: state?.name || '',
                         newValue: updatedState?.value || 0,
                         color: state?.color,
                       };
-                    });
+                    }).filter(u => u.stateName); // 过滤掉没有名称的
 
                     console.log('[状态更新]', stateUpdatesMetadata);
 
@@ -392,8 +390,8 @@ export function ChatView() {
               );
             }
 
-            // 添加事件
-            if (result.analysis.event && enableEventMemory) {
+            // 添加事件（只在启用事件记忆时）
+            if (result.analysis.event && currentConv.enableEventMemory) {
               const newEvent: MemoryEvent = {
                 id: Date.now().toString(),
                 timestamp: new Date(),
@@ -647,7 +645,7 @@ export function ChatView() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-text-secondary">
-                双层 LLM 架构（Flash + Pro）
+                gemini 3.0 flash
               </span>
             </div>
             <div className="flex items-center gap-3">

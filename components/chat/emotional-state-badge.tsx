@@ -71,77 +71,71 @@ export function EmotionalStateBadge({ emotionalState, compact = false }: Emotion
     );
   }
 
-  // 完整模式：显示所有信息
+  // 完整模式：紧凑优雅的设计
   return (
-    <div className={`rounded-lg p-3 ${emotionConfig.bgColor} border border-border-light space-y-2`}>
-      {/* 第一行：情感 + 强度 */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2">
-          <EmotionIcon className={`h-5 w-5 ${emotionConfig.color}`} />
-          <span className="text-sm font-semibold text-text-primary capitalize">
-            {emotionalState.emotion}
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <span className="text-xs text-text-secondary">强度</span>
-          <div className="w-20 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-            <div
-              className={`h-full ${emotionConfig.color.replace('text-', 'bg-')} transition-all duration-300`}
-              style={{ width: `${emotionalState.intensity * 100}%` }}
-            />
-          </div>
-          <span className="text-xs font-medium text-text-secondary">
-            {Math.round(emotionalState.intensity * 100)}%
-          </span>
-        </div>
+    <div className="inline-flex items-center gap-3 px-4 py-2 rounded-lg bg-surface-secondary border border-border-light shadow-sm">
+      {/* 情感图标和名称 */}
+      <div className="flex items-center gap-2">
+        <EmotionIcon className={`h-5 w-5 ${emotionConfig.color}`} />
+        <span className="text-sm font-semibold text-text-primary capitalize">
+          {emotionalState.emotion}
+        </span>
       </div>
 
-      {/* 第二行：Intent + Subtext */}
-      {(emotionalState.intent || emotionalState.subtext) && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {emotionalState.intent && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300">
-              <span className="opacity-60">意图</span>
-              {INTENT_LABELS[emotionalState.intent] || emotionalState.intent}
-            </span>
-          )}
-          {emotionalState.subtext && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-xs font-medium text-purple-700 dark:text-purple-300">
-              <span className="opacity-60">细节</span>
-              {SUBTEXT_LABELS[emotionalState.subtext] || emotionalState.subtext}
-            </span>
-          )}
+      {/* 强度指示器 */}
+      <div className="flex items-center gap-1.5">
+        <div className="w-16 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+          <div
+            className={`h-full ${emotionConfig.color.replace('text-', 'bg-')} transition-all duration-300`}
+            style={{ width: `${emotionalState.intensity * 100}%` }}
+          />
         </div>
+        <span className="text-xs font-medium text-text-secondary min-w-[32px]">
+          {Math.round(emotionalState.intensity * 100)}%
+        </span>
+      </div>
+
+      {/* Intent 标签 */}
+      {emotionalState.intent && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300">
+          {INTENT_LABELS[emotionalState.intent] || emotionalState.intent}
+        </span>
       )}
 
-      {/* 第三行：VAD 维度（可选） */}
+      {/* Subtext 标签 */}
+      {emotionalState.subtext && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-xs font-medium text-purple-700 dark:text-purple-300">
+          {SUBTEXT_LABELS[emotionalState.subtext] || emotionalState.subtext}
+        </span>
+      )}
+
+      {/* VAD 维度 - 紧凑显示 */}
       {(emotionalState.valence !== undefined ||
         emotionalState.arousal !== undefined ||
         emotionalState.dominance !== undefined) && (
-        <div className="grid grid-cols-3 gap-2 pt-1 border-t border-border-light/50">
+        <div className="flex items-center gap-2 pl-2 ml-2 border-l border-border-light">
           {emotionalState.valence !== undefined && (
-            <div className="text-center">
-              <div className="text-xs text-text-secondary">效价</div>
-              <div className="text-sm font-semibold text-text-primary">
-                {emotionalState.valence > 0 ? '+' : ''}
-                {emotionalState.valence.toFixed(1)}
-              </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-text-tertiary">效</span>
+              <span className="text-xs font-semibold text-text-primary">
+                {emotionalState.valence > 0 ? '+' : ''}{emotionalState.valence.toFixed(1)}
+              </span>
             </div>
           )}
           {emotionalState.arousal !== undefined && (
-            <div className="text-center">
-              <div className="text-xs text-text-secondary">唤醒</div>
-              <div className="text-sm font-semibold text-text-primary">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-text-tertiary">唤</span>
+              <span className="text-xs font-semibold text-text-primary">
                 {emotionalState.arousal.toFixed(1)}
-              </div>
+              </span>
             </div>
           )}
           {emotionalState.dominance !== undefined && (
-            <div className="text-center">
-              <div className="text-xs text-text-secondary">支配</div>
-              <div className="text-sm font-semibold text-text-primary">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-text-tertiary">支</span>
+              <span className="text-xs font-semibold text-text-primary">
                 {emotionalState.dominance.toFixed(1)}
-              </div>
+              </span>
             </div>
           )}
         </div>

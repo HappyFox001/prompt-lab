@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     const response = result.response.text();
 
     // 解析 XML 响应
-    const parsed = parseAnalysisResponse(response);
+    const parsed = parseAnalysisResponse(response, numericStates);
 
     console.log(`[后台处理] 完成分析，提取了 ${parsed.stateUpdates?.length || 0} 个状态更新`);
 
@@ -146,15 +146,53 @@ function buildDeepAnalysisPrompt(params: {
     ? `\n【之前的对话总结】\n${previousSummary}\n`
     : '';
 
+  // 动态构建分析任务说明
+  const tasks = [];
+  const outputSections = [];
+
+  // 只有在有声明状态时才要求分析状态更新
+  if (numericStates && numericStates.length > 0) {
+    tasks.push('1. **状态更新**：根据对话内容，判断各个状态是否需要调整（-10 到 +10）');
+
+    // 动态生成状态更新示例（取前2个状态作为示例）
+    const exampleUpdates = numericStates.slice(0, 2).map((state, index) => {
+      const exampleDeltas = ['+3', '+2', '-1', '+5'];
+      const exampleReasons = [
+        `${state.name}有所提升`,
+        `对话加深了${state.name}`,
+        `${state.name}略有变化`,
+        `用户行为影响了${state.name}`
+      ];
+      return `    <update id="${state.id}" delta="${exampleDeltas[index % exampleDeltas.length]}" reason="${exampleReasons[index % exampleReasons.length]}" />`;
+    }).join('\n');
+
+    outputSections.push(`  <state_updates>
+${exampleUpdates}
+  </state_updates>`);
+  }
+
+  // 只有在启用事件记忆时才要求提取事件
+  if (memoryEvents !== undefined) {
+    tasks.push(`${tasks.length + 1}. **事件提取**：如果对话中有重要事件，提取并标注重要性（1-10）`);
+    outputSections.push(`  <event>
+    <importance>8</importance>
+    <description>用户首次透露了家庭背景和童年经历</description>
+  </event>`);
+  }
+
+  // 总是要求生成记忆总结
+  tasks.push(`${tasks.length + 1}. **记忆总结**：更新或扩展之前的总结，整合新的对话内容（200-300字）`);
+  outputSections.push(`  <summary>
+    【请在这里输出累积式总结，整合之前的总结和新的对话内容】
+  </summary>`);
+
   return `你是一个专业的对话分析师。请深度分析以下对话，提取关键信息并输出结构化数据。
 
 ${summaryContext}
 
-## 当前状态
-${statesContext}
+${statesContext ? `## 当前状态\n${statesContext}` : ''}
 
-## 历史重要事件
-${eventsContext}
+${eventsContext ? `## 历史重要事件\n${eventsContext}` : ''}
 
 ## 对话历史（最近 20 条）
 
@@ -168,42 +206,31 @@ AI 最新回复：${recentResponse}
 
 请分析本轮对话，输出以下内容：
 
-1. **状态更新**：根据对话内容，判断各个状态是否需要调整（-10 到 +10）
-2. **事件提取**：如果对话中有重要事件，提取并标注重要性（1-10）
-3. **记忆总结**：更新或扩展之前的总结，整合新的对话内容（200-300字）
+${tasks.join('\n')}
 
 ## 输出格式
 
 请严格按照以下 XML 格式输出：
 
 <analysis>
-  <state_updates>
-    <update id="affection" delta="+3" reason="用户分享了私密话题，增加亲密感" />
-    <update id="trust" delta="+2" reason="建立了更深层次的沟通" />
-  </state_updates>
-
-  <event>
-    <importance>8</importance>
-    <description>用户首次透露了家庭背景和童年经历</description>
-  </event>
-
-  <summary>
-    【请在这里输出累积式总结，整合之前的总结和新的对话内容】
-  </summary>
+${outputSections.join('\n\n')}
 </analysis>
 
 注意事项：
-- 如果没有需要更新的状态，<state_updates> 可以为空
-- 如果没有重要事件（重要性 < 6），可以省略 <event> 标签
-- 总结要保持客观、第三人称、时间顺序
+${numericStates && numericStates.length > 0 ? '- 只更新已声明的状态 ID，不要创建新的状态\n- 如果没有需要更新的状态，<state_updates> 可以为空\n' : ''}${memoryEvents !== undefined ? '- 如果没有重要事件（重要性 < 6），可以省略 <event> 标签\n' : ''}- 总结要保持客观、第三人称、时间顺序
 
 请开始分析：`;
 }
 
 /**
  * 解析 XML 格式的分析结果
+ * @param response LLM 返回的 XML 响应
+ * @param declaredStates 前端声明的状态列表（用于过滤）
  */
-function parseAnalysisResponse(response: string): {
+function parseAnalysisResponse(
+  response: string,
+  declaredStates?: NumericState[]
+): {
   stateUpdates?: Array<{ id: string; delta: number; reason?: string }>;
   event?: { importance: number; description: string };
   summary?: string;
@@ -218,11 +245,18 @@ function parseAnalysisResponse(response: string): {
       const updateRegex = /<update id="([^"]+)" delta="([^"]+)"(?: reason="([^"]+)")? \/>/g;
       let match;
       while ((match = updateRegex.exec(stateUpdatesMatch[1])) !== null) {
-        updates.push({
-          id: match[1],
-          delta: parseFloat(match[2]),
-          reason: match[3] || undefined
-        });
+        const stateId = match[1];
+
+        // 只保留在声明状态列表中的更新
+        if (!declaredStates || declaredStates.length === 0 || declaredStates.some(s => s.id === stateId)) {
+          updates.push({
+            id: stateId,
+            delta: parseFloat(match[2]),
+            reason: match[3] || undefined
+          });
+        } else {
+          console.log(`[状态过滤] 忽略未声明的状态: ${stateId}`);
+        }
       }
       if (updates.length > 0) {
         result.stateUpdates = updates;

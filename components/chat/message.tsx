@@ -143,8 +143,9 @@ export function Message({ message, onEdit }: MessageProps) {
             )}
           </div>
 
-          {/* 状态更新显示 */}
-          {!isUser && message.metadata?.stateUpdates && message.metadata.stateUpdates.length > 0 && (
+          {/* 状态更新显示 - 只在有有效状态时显示 */}
+          {!isUser && message.metadata?.stateUpdates && message.metadata.stateUpdates.length > 0 &&
+           message.metadata.stateUpdates.some(u => u.stateName && u.stateName !== u.id) && (
             <div className="mt-4 space-y-2">
               <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide flex items-center gap-1.5">
                 <TrendingUp className="h-3 w-3" />
@@ -209,10 +210,7 @@ export function Message({ message, onEdit }: MessageProps) {
 
           {/* 情感状态显示 */}
           {!isUser && message.emotionalState && (
-            <div className="mt-4 space-y-2">
-              <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">
-                情感状态
-              </div>
+            <div className="mt-3">
               <EmotionalStateBadge emotionalState={message.emotionalState} />
             </div>
           )}
