@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: '未配置 GEMINI_API_KEY' }),
+        JSON.stringify({ error: 'GEMINI_API_KEYが設定されていません' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -97,10 +97,10 @@ export async function POST(req: NextRequest) {
     );
 
   } catch (error: any) {
-    console.error('[后台处理] 错误:', error);
+    console.error('[バックグラウンド処理] エラー:', error);
     return new Response(
       JSON.stringify({
-        error: error?.message || '后台处理失败',
+        error: error?.message || 'バックグラウンド処理に失敗しました',
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
@@ -122,7 +122,7 @@ function buildDeepAnalysisPrompt(params: {
   // 对话历史（最近 20 条）
   const conversationHistory = messages
     .slice(-20)
-    .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
+    .map(m => `${m.role === 'user' ? 'ユーザー' : 'AI'}：${m.content}`)
     .join('\n\n');
 
   // 当前状态
@@ -143,7 +143,7 @@ function buildDeepAnalysisPrompt(params: {
 
   // 之前的总结
   const summaryContext = previousSummary
-    ? `\n【之前的对话总结】\n${previousSummary}\n`
+    ? `\n【前回の会話サマリー】\n${previousSummary}\n`
     : '';
 
   // 动态构建分析任务说明
@@ -152,16 +152,16 @@ function buildDeepAnalysisPrompt(params: {
 
   // 只有在有声明状态时才要求分析状态更新
   if (numericStates && numericStates.length > 0) {
-    tasks.push('1. **状态更新**：根据对话内容，判断各个状态是否需要调整（-10 到 +10）');
+    tasks.push('1. **状態更新**：会話の内容に基づいて、各状態の調整が必要か判断（-10から+10）');
 
     // 动态生成状态更新示例（取前2个状态作为示例）
     const exampleUpdates = numericStates.slice(0, 2).map((state, index) => {
       const exampleDeltas = ['+3', '+2', '-1', '+5'];
       const exampleReasons = [
-        `${state.name}有所提升`,
-        `对话加深了${state.name}`,
-        `${state.name}略有变化`,
-        `用户行为影响了${state.name}`
+        `${state.name}が向上しました`,
+        `会話により${state.name}が深まりました`,
+        `${state.name}が若干変化しました`,
+        `ユーザーの行動が${state.name}に影響しました`
       ];
       return `    <update id="${state.id}" delta="${exampleDeltas[index % exampleDeltas.length]}" reason="${exampleReasons[index % exampleReasons.length]}" />`;
     }).join('\n');
@@ -173,53 +173,53 @@ ${exampleUpdates}
 
   // 只有在启用事件记忆时才要求提取事件
   if (memoryEvents !== undefined) {
-    tasks.push(`${tasks.length + 1}. **事件提取**：如果对话中有重要事件，提取并标注重要性（1-10）`);
+    tasks.push(`${tasks.length + 1}. **イベント抽出**：会話に重要なイベントがあれば、抽出して重要度をマーク（1-10）`);
     outputSections.push(`  <event>
     <importance>8</importance>
-    <description>用户首次透露了家庭背景和童年经历</description>
+    <description>ユーザーが初めて家族の背景や幼少期の経験を明かしました</description>
   </event>`);
   }
 
   // 总是要求生成记忆总结
-  tasks.push(`${tasks.length + 1}. **记忆总结**：更新或扩展之前的总结，整合新的对话内容（200-300字）`);
+  tasks.push(`${tasks.length + 1}. **記憶サマリー**：以前のサマリーを更新または拡張し、新しい会話内容を統合（200-300文字）`);
   outputSections.push(`  <summary>
-    【请在这里输出累积式总结，整合之前的总结和新的对话内容】
+    【ここに累積的なサマリーを出力し、以前のサマリーと新しい会話内容を統合してください】
   </summary>`);
 
-  return `你是一个专业的对话分析师。请深度分析以下对话，提取关键信息并输出结构化数据。
+  return `あなたはプロフェッショナルな会話アナリストです。以下の会話を深く分析し、重要な情報を抽出して構造化されたデータを出力してください。
 
 ${summaryContext}
 
-${statesContext ? `## 当前状态\n${statesContext}` : ''}
+${statesContext ? `## 現在の状態\n${statesContext}` : ''}
 
-${eventsContext ? `## 历史重要事件\n${eventsContext}` : ''}
+${eventsContext ? `## 過去の重要なイベント\n${eventsContext}` : ''}
 
-## 对话历史（最近 20 条）
+## 会話履歴（最新20件）
 
 ${conversationHistory}
 
-AI 最新回复：${recentResponse}
+AIの最新返信：${recentResponse}
 
 ---
 
-## 分析任务
+## 分析タスク
 
-请分析本轮对话，输出以下内容：
+今回の会話を分析し、以下の内容を出力してください：
 
 ${tasks.join('\n')}
 
-## 输出格式
+## 出力形式
 
-请严格按照以下 XML 格式输出：
+以下のXML形式で厳密に出力してください：
 
 <analysis>
 ${outputSections.join('\n\n')}
 </analysis>
 
-注意事项：
-${numericStates && numericStates.length > 0 ? '- 只更新已声明的状态 ID，不要创建新的状态\n- 如果没有需要更新的状态，<state_updates> 可以为空\n' : ''}${memoryEvents !== undefined ? '- 如果没有重要事件（重要性 < 6），可以省略 <event> 标签\n' : ''}- 总结要保持客观、第三人称、时间顺序
+注意事項：
+${numericStates && numericStates.length > 0 ? '- 宣言済みの状態IDのみを更新し、新しい状態を作成しないでください\n- 更新が必要な状態がない場合、<state_updates>は空でも構いません\n' : ''}${memoryEvents !== undefined ? '- 重要なイベントがない場合（重要度 < 6）、<event>タグは省略できます\n' : ''}- サマリーは客観的、三人称、時系列を保ってください
 
-请开始分析：`;
+分析を開始してください：`;
 }
 
 /**

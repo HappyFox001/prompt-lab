@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 // ModelSelector 已移除（双层架构使用固定模型）
@@ -11,9 +11,11 @@ import { SystemPromptDialog } from './system-prompt-dialog';
 import { ContextDialog } from './context-dialog';
 import { StatesDialog } from './states-dialog';
 import { EventsDialog } from './events-dialog';
+import { PromptTestPanel } from './prompt-test-panel';
 import { indexedDB_storage } from '@/lib/indexeddb';
 import { FileText, History } from 'lucide-react';
 import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
+import { PRESET_PROMPTS } from '@/lib/preset-prompts';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -24,7 +26,10 @@ export function ChatView() {
   const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
   const [isStatesDialogOpen, setIsStatesDialogOpen] = useState(false);
   const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
+  const [isTestPanelOpen, setIsTestPanelOpen] = useState(true);
+  const [testPanelWidth, setTestPanelWidth] = useState(280); // 右侧面板宽度
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<SystemPrompt | null>(null);
+  const [testPrompts, setTestPrompts] = useState<PromptTestItem[]>([]);
 
   // 初始化：从 IndexedDB 加载或创建新对话
   useEffect(() => {
@@ -82,6 +87,15 @@ export function ChatView() {
   const currentConversation = conversations.find(
     (c) => c.id === currentConversationId
   );
+
+  // 从当前对话加载测试提示词
+  useEffect(() => {
+    if (currentConversation?.testPrompts) {
+      setTestPrompts(currentConversation.testPrompts);
+    } else {
+      setTestPrompts([]);
+    }
+  }, [currentConversationId, currentConversation?.testPrompts]);
 
   const handleSend = async (content: string) => {
     if (!currentConversationId) return;
@@ -167,11 +181,27 @@ export function ChatView() {
       if (memorySummary && memorySummary.content) {
         contextMessages.push({
           role: 'system',
-          content: `以下是之前对话的摘要，帮助你理解上下文：\n\n${memorySummary.content}`,
+          content: `以下は以前の会話のサマリーです。文脈を理解するのに役立ちます：\n\n${memorySummary.content}`,
         });
       }
 
-      // 3. 添加最近的消息（不再添加状态信息，由后端处理）
+      // 3. 添加启用的提示词增强片段
+      const enabledPrompts = testPrompts.filter(p => p.enabled);
+      if (enabledPrompts.length > 0) {
+        const promptEnhancements = enabledPrompts
+          .map(p => p.content)
+          .filter(c => c.trim())
+          .join('\n\n---\n\n');
+
+        if (promptEnhancements) {
+          contextMessages.push({
+            role: 'system',
+            content: `【ロールプレイ強化ガイドライン】\n以下のガイドラインに従って、より自然で一貫性のあるロールプレイを心がけてください。\n\n${promptEnhancements}`,
+          });
+        }
+      }
+
+      // 4. 添加最近的消息（不再添加状态信息，由后端处理）
       const messagesToSend = [
         ...contextMessages,
         ...recentMessages.map((msg) => ({
@@ -212,7 +242,7 @@ export function ChatView() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || '调用 API 失败');
+        throw new Error(error.error || 'API 调用失败');
       }
 
       // 处理流式响应
@@ -311,7 +341,7 @@ export function ChatView() {
             return;
           }
 
-          console.log('[后台处理] 3秒后触发深度分析...');
+          console.log('[后台处理] 3秒后开始深度分析...');
 
           const bgResponse = await fetch('/api/process-background', {
             method: 'POST',
@@ -472,7 +502,7 @@ export function ChatView() {
                 msg.id === assistantMessageId
                   ? {
                       ...msg,
-                      content: `❌ Error: ${error.message}\n\n请检查：\n• 模型配置是否正确\n• API Key 是否有效\n• 网络连接是否正常\n• API 服务是否可用`,
+                      content: `❌ 错误: ${error.message}\n\n请检查：\n• 模型配置是否正确\n• API 密钥是否有效\n• 网络连接是否正常\n• API 服务是否可用`,
                     }
                   : msg
               ),
@@ -488,7 +518,7 @@ export function ChatView() {
 
   // 手动更新摘要（双层架构中已自动处理，此函数保留以兼容 UI）
   const handleManualUpdateSummary = async () => {
-    console.log('[Summary] 双层架构中摘要已自动在后台生成，无需手动触发');
+    console.log('[摘要] 双层架构中摘要会在后台自动生成，无需手动触发');
     // 在双层架构中，摘要会在每次对话后自动在后台生成
     // 此函数保留以兼容现有 UI，但不再执行实际操作
   };
@@ -569,6 +599,24 @@ export function ChatView() {
     );
   };
 
+  const handleTestPromptsChange = (prompts: PromptTestItem[]) => {
+    if (!currentConversationId) return;
+
+    setTestPrompts(prompts);
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            testPrompts: prompts,
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+  };
+
   const handleNewConversation = () => {
     const newConv = createNewConversation();
     setConversations((prev) => [newConv, ...prev]);
@@ -639,7 +687,10 @@ export function ChatView() {
       />
 
       {/* 主聊天区域 */}
-      <div className="flex flex-1 flex-col">
+      <div
+        className="flex flex-1 flex-col transition-all duration-300"
+        style={{ marginRight: `${testPanelWidth}px` }}
+      >
         {/* 头部 - 优化样式，移除边框 */}
         <header className="bg-surface-primary px-6 py-3 sticky top-0 z-10">
           <div className="flex items-center justify-between">
@@ -728,6 +779,15 @@ export function ChatView() {
         enabled={currentConversation?.enableEventMemory || false}
         onToggle={handleToggleEventMemory}
       />
+
+      {/* 测试提示词面板 */}
+      <PromptTestPanel
+        isOpen={isTestPanelOpen}
+        onClose={() => setIsTestPanelOpen(false)}
+        activePrompts={testPrompts}
+        onTestPromptsChange={handleTestPromptsChange}
+        onWidthChange={setTestPanelWidth}
+      />
     </div>
   );
 }
@@ -742,6 +802,7 @@ function createNewConversation(): Conversation {
     numericStates: [],
     memoryEvents: [],
     enableEventMemory: false,
+    testPrompts: [...PRESET_PROMPTS], // 添加预设提示词片段（默认禁用）
     createdAt: new Date(),
     updatedAt: new Date(),
   };

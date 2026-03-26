@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return new Response(
-        JSON.stringify({ error: '未配置 GEMINI_API_KEY' }),
+        JSON.stringify({ error: 'GEMINI_API_KEYが設定されていません' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -136,7 +136,7 @@ export async function POST(req: NextRequest) {
     console.error('API Error:', error);
     return new Response(
       JSON.stringify({
-        error: error?.message || '调用 API 时发生错误'
+        error: error?.message || 'APIの呼び出し中にエラーが発生しました'
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
@@ -153,44 +153,44 @@ function buildLayer1Prompt(
 ): string {
   const conversationHistory = messages
     .slice(-10) // 只保留最近 10 条消息
-    .map(m => `${m.role === 'user' ? '用户' : 'AI'}：${m.content}`)
+    .map(m => `${m.role === 'user' ? 'ユーザー' : 'AI'}：${m.content}`)
     .join('\n\n');
 
   // 构建状态上下文
   const statesContext = numericStates && numericStates.length > 0
-    ? `\n## 当前状态\n\n以下是你和用户之间的关系状态，请在回复时参考这些状态，调整你的语气和态度：\n\n${numericStates.map(s =>
+    ? `\n## 現在の状態\n\nあなたとユーザーの関係性を示す以下の状態を参考にして、返信の口調や態度を調整してください：\n\n${numericStates.map(s =>
         `- ${s.name}: ${s.value}/${s.max}${s.description ? ` (${s.description})` : ''}`
       ).join('\n')}\n`
     : '';
 
-  const basePrompt = systemPrompt || '你是一个友善的AI助手。';
+  const basePrompt = systemPrompt || 'あなたは親しみやすいAIアシスタントです。';
 
-  return `${basePrompt}请用中文回复用户，并在回复后输出情感状态。
+  return `${basePrompt}ユーザーに日本語で返信し、返信後に感情状態を出力してください。
 ${statesContext}
-## 输出格式
+## 出力形式
 
-请按以下格式输出：
-1. 先输出回复文本
-2. 然后输出分隔符 ###EMOTION###
-3. 最后输出情感状态 JSON
+以下の形式で出力してください：
+1. まず返信テキストを出力
+2. 次に区切り文字 ###EMOTION### を出力
+3. 最後に感情状態のJSONを出力
 
-示例：
-你好！很高兴认识你～
+例：
+こんにちは！お会いできて嬉しいです～
 ###EMOTION###
 {"emotion":"happy","intensity":0.7,"intent":"greet","valence":0.8,"arousal":0.6}
 
-情感参数说明：
-- emotion: 情绪类别，必须从以下选项中选择：happy, sad, angry, surprised, fear, disgust, neutral, excited, anxious, thoughtful, loving, playful, curious, embarrassed, confident
-- intensity: 强度(0.0-1.0)
-- intent: 交互意图（可选）- agree(同意), think(思考), refuse(拒绝), greet(打招呼), listen(倾听)
-- subtext: 情绪细节（可选）- shy(害羞), confident(自信), hesitant(犹豫), playful(俏皮)
-- valence: 效价(-1.0到1.0，可选)
-- arousal: 唤醒度(0.0-1.0，可选)
-- dominance: 支配度(0.0-1.0，可选)
+感情パラメータの説明：
+- emotion: 感情カテゴリ、以下から必ず選択：happy, sad, angry, surprised, fear, disgust, neutral, excited, anxious, thoughtful, loving, playful, curious, embarrassed, confident
+- intensity: 強度(0.0-1.0)
+- intent: インタラクション意図（任意）- agree(同意), think(考える), refuse(拒否), greet(挨拶), listen(傾聴)
+- subtext: 感情の詳細（任意）- shy(恥ずかしい), confident(自信がある), hesitant(ためらう), playful(遊び心)
+- valence: 感情価(-1.0から1.0、任意)
+- arousal: 覚醒度(0.0-1.0、任意)
+- dominance: 支配度(0.0-1.0、任意)
 
-## 对话历史
+## 会話履歴
 
 ${conversationHistory}
 
-请回复最后一条用户消息：`;
+最後のユーザーメッセージに返信してください：`;
 }

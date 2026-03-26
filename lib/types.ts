@@ -70,6 +70,16 @@ export interface MemoryEvent {
   importance: number; // 重要性等级 1-10
 }
 
+export interface PromptTestItem {
+  id: string;
+  name: string; // 提示词片段名称
+  content: string; // 提示词内容（日文）
+  enabled: boolean; // 是否启用
+  color?: string; // 显示颜色
+  isPreset?: boolean; // 是否为预设片段
+  category?: string; // 分类标签
+}
+
 export interface Conversation {
   id: string;
   title: string;
@@ -78,6 +88,7 @@ export interface Conversation {
   numericStates?: NumericState[]; // 数值化状态
   memoryEvents?: MemoryEvent[]; // 事件记忆
   enableEventMemory?: boolean; // 是否启用事件记忆
+  testPrompts?: PromptTestItem[]; // 测试提示词片段
   createdAt: Date;
   updatedAt: Date;
   systemPromptId?: string; // 关联的系统提示词 ID
