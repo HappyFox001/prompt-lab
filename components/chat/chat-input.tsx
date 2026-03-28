@@ -2,7 +2,7 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Square, Activity, Calendar, User } from 'lucide-react';
+import { Send, Square, Activity, Calendar, User, Play, Pause } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
@@ -15,6 +15,9 @@ interface ChatInputProps {
   onOpenUserPrompt?: () => void;
   suggestedText?: string;
   onSuggestedTextChange?: (text: string) => void;
+  autoDialogEnabled?: boolean;
+  onToggleAutoDialog?: () => void;
+  hasUserPrompt?: boolean;
 }
 
 export function ChatInput({
@@ -27,6 +30,9 @@ export function ChatInput({
   onOpenUserPrompt,
   suggestedText = '',
   onSuggestedTextChange,
+  autoDialogEnabled = false,
+  onToggleAutoDialog,
+  hasUserPrompt = false,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -162,6 +168,29 @@ export function ChatInput({
             >
               <Send className="h-4 w-4" strokeWidth={2} />
             </Button>
+          )}
+
+          {/* 自动对话开关 */}
+          {hasUserPrompt && onToggleAutoDialog && (
+            <button
+              onClick={onToggleAutoDialog}
+              disabled={disabled || isLoading}
+              className={cn(
+                'h-10 w-10 shrink-0 flex items-center justify-center rounded-lg border transition-all duration-200',
+                autoDialogEnabled
+                  ? 'border-accent bg-accent text-white shadow-md hover:shadow-lg hover:scale-105 active:scale-95'
+                  : 'border-border-medium bg-surface-secondary text-text-tertiary hover:border-accent hover:text-accent hover:bg-accent/5',
+                (disabled || isLoading) && 'opacity-50 cursor-not-allowed'
+              )}
+              title={autoDialogEnabled ? '停止自动对话' : '开启自动对话'}
+              aria-label={autoDialogEnabled ? '停止自动对话' : '开启自动对话'}
+            >
+              {autoDialogEnabled ? (
+                <Pause className="h-4 w-4" strokeWidth={2} />
+              ) : (
+                <Play className="h-4 w-4" strokeWidth={2} />
+              )}
+            </button>
           )}
         </div>
       </div>

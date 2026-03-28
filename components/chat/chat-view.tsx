@@ -561,7 +561,7 @@ export function ChatView() {
         body: JSON.stringify({
           userPrompt: currentUserPrompt.content,
           messages: currentConv.messages.slice(-15), // 最近15条
-          lastAIResponse,
+          lastAIResponse: lastAIResponse || '开始对话', // 如果没有AI回复，表示开场
           rejectionReason,
         }),
       });
@@ -572,7 +572,18 @@ export function ChatView() {
 
       const { suggestion } = await response.json();
       setSuggestedText(suggestion);
-      setIsSuggestionDialogOpen(true);
+
+      // 如果是自动对话模式，直接发送，不显示确认对话框
+      if (currentConv.autoSuggestEnabled) {
+        // 自动发送建议
+        setTimeout(() => {
+          handleSend(suggestion);
+          setSuggestedText('');
+        }, 500);
+      } else {
+        // 手动模式，显示确认对话框
+        setIsSuggestionDialogOpen(true);
+      }
     } catch (error) {
       console.error('建议生成错误:', error);
       // 错误提示（可选）
@@ -764,15 +775,16 @@ export function ChatView() {
     }
   };
 
-  const handleSelectUserPrompt = async (promptId: string | undefined, autoSuggest: boolean) => {
-    // 更新当前对话的用户提示词和自动建议设置
+  const handleSelectUserPrompt = async (promptId: string | undefined) => {
+    // 更新当前对话的用户提示词
     setConversations((prevConvs) =>
       prevConvs.map((conv) => {
         if (conv.id === currentConversationId) {
           return {
             ...conv,
             userPromptId: promptId,
-            autoSuggestEnabled: autoSuggest,
+            // 如果取消选择用户提示词，也关闭自动对话
+            autoSuggestEnabled: promptId ? conv.autoSuggestEnabled : false,
             updatedAt: new Date(),
           };
         }
@@ -786,6 +798,47 @@ export function ChatView() {
       setCurrentUserPrompt(prompt);
     } else {
       setCurrentUserPrompt(null);
+    }
+  };
+
+  const handleToggleAutoDialog = () => {
+    if (!currentConversationId || !currentUserPrompt) return;
+
+    const currentConv = conversations.find((c) => c.id === currentConversationId);
+    const newAutoSuggestEnabled = !currentConv?.autoSuggestEnabled;
+
+    // 更新开关状态
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            autoSuggestEnabled: newAutoSuggestEnabled,
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+
+    // 如果是开启自动对话，立即生成第一句话
+    if (newAutoSuggestEnabled && currentConv) {
+      // 获取最后一条 AI 消息（如果有）
+      const lastAssistantMessage = [...currentConv.messages]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+
+      if (lastAssistantMessage) {
+        // 如果有AI消息，基于它生成用户回复
+        setTimeout(() => {
+          generateSuggestion(lastAssistantMessage.content, undefined);
+        }, 300);
+      } else {
+        // 如果没有AI消息，生成开场白
+        setTimeout(() => {
+          generateSuggestion('', undefined);
+        }, 300);
+      }
     }
   };
 
@@ -857,6 +910,9 @@ export function ChatView() {
           onOpenUserPrompt={() => setIsUserPromptDialogOpen(true)}
           suggestedText={suggestedText}
           onSuggestedTextChange={setSuggestedText}
+          autoDialogEnabled={currentConversation?.autoSuggestEnabled || false}
+          onToggleAutoDialog={handleToggleAutoDialog}
+          hasUserPrompt={!!currentConversation?.userPromptId}
         />
       </div>
 
@@ -873,7 +929,6 @@ export function ChatView() {
         isOpen={isUserPromptDialogOpen}
         onClose={() => setIsUserPromptDialogOpen(false)}
         currentPromptId={currentConversation?.userPromptId}
-        autoSuggestEnabled={currentConversation?.autoSuggestEnabled}
         onSelectPrompt={handleSelectUserPrompt}
       />
 

@@ -11,15 +11,13 @@ interface UserPromptDialogProps {
   isOpen: boolean;
   onClose: () => void;
   currentPromptId?: string;
-  autoSuggestEnabled?: boolean;
-  onSelectPrompt: (promptId: string | undefined, autoSuggest: boolean) => void;
+  onSelectPrompt: (promptId: string | undefined) => void;
 }
 
 export function UserPromptDialog({
   isOpen,
   onClose,
   currentPromptId,
-  autoSuggestEnabled = false,
   onSelectPrompt,
 }: UserPromptDialogProps) {
   const [prompts, setPrompts] = useState<UserPrompt[]>([]);
@@ -29,7 +27,6 @@ export function UserPromptDialog({
     content: '',
     description: '',
   });
-  const [tempAutoSuggest, setTempAutoSuggest] = useState(autoSuggestEnabled);
 
   // 加载用户提示词列表
   useEffect(() => {
@@ -37,10 +34,6 @@ export function UserPromptDialog({
       loadPrompts();
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    setTempAutoSuggest(autoSuggestEnabled);
-  }, [autoSuggestEnabled, isOpen]);
 
   const loadPrompts = async () => {
     const loaded = await indexedDB_storage.getUserPrompts();
@@ -83,17 +76,17 @@ export function UserPromptDialog({
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('このユーザープロンプトを削除してもよろしいですか？')) {
+    if (confirm('确定要删除此用户提示词吗？')) {
       await indexedDB_storage.deleteUserPrompt(id);
       await loadPrompts();
       if (currentPromptId === id) {
-        onSelectPrompt(undefined, false);
+        onSelectPrompt(undefined);
       }
     }
   };
 
   const handleSelect = (promptId: string | undefined) => {
-    onSelectPrompt(promptId, promptId ? tempAutoSuggest : false);
+    onSelectPrompt(promptId);
     onClose();
   };
 
@@ -286,26 +279,6 @@ AI将根据这个提示词生成用户接下来应该说的内容。`}
                 <div className="text-center py-12 text-text-tertiary">
                   <p>还没有创建用户提示词</p>
                   <p className="text-sm mt-2">点击上方按钮创建第一个提示词</p>
-                </div>
-              )}
-
-              {/* 自动建议开关（仅在选择了提示词时显示） */}
-              {currentPromptId && (
-                <div className="mt-6 p-4 rounded-lg border border-border-light bg-surface-secondary">
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempAutoSuggest}
-                      onChange={(e) => setTempAutoSuggest(e.target.checked)}
-                      className="mt-0.5 h-5 w-5 rounded border-border-medium text-accent focus:ring-2 focus:ring-accent/20"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-text-primary">启用自动建议</div>
-                      <div className="text-xs text-text-tertiary mt-1">
-                        AI响应后，会自动生成用户的下一句话。你可以确认后再发送。
-                      </div>
-                    </div>
-                  </label>
                 </div>
               )}
             </div>
