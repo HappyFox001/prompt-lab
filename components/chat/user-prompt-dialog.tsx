@@ -149,24 +149,42 @@ export function UserPromptDialog({
                 <label className="block text-sm font-medium text-text-primary mb-2">
                   用户角色设定 *
                   <span className="ml-2 text-xs text-text-tertiary">
-                    AI会以此角色生成发言
+                    扮演产品用户，用日语对话
                   </span>
                 </label>
+                <div className="mb-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
+                  <p className="text-xs text-blue-900 font-medium mb-1">📝 必须包含以下信息：</p>
+                  <ul className="text-xs text-blue-800 space-y-0.5 ml-4">
+                    <li>• 用户年龄（例如：25岁）</li>
+                    <li>• 用户身份/职业（例如：大学生、上班族）</li>
+                    <li>• 使用的产品（例如：学习管理系统、电商平台）</li>
+                    <li>• 用户性格特征和行为模式</li>
+                    <li>• <strong>重要：所有对话必须使用日语</strong></li>
+                  </ul>
+                </div>
                 <textarea
                   value={editingPrompt.content || ''}
                   onChange={(e) => setEditingPrompt({ ...editingPrompt, content: e.target.value })}
                   className="w-full px-4 py-3 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all resize-none"
-                  rows={12}
-                  placeholder={`请描述用户的角色、性格和行为模式。
+                  rows={14}
+                  placeholder={`あなたは製品ユーザーとして、以下の役割を演じて製品機能をテストします：
 
-例如：
-你是一个充满好奇心的学生。
-- 对新知识充满兴趣
-- 经常提问
-- 为了加深理解会寻求具体例子
-- 友好且口语化的语气
+年齢：25歳
+身分：大学生
+使用製品：オンライン学習プラットフォーム
 
-AI将根据这个提示词生成用户接下来应该说的内容。`}
+性格特徴：
+- 新機能に興味津々
+- 製品の問題を発見するのが得意
+- 積極的に使用フィードバックを提供する
+- ユーザー体験の細部にこだわる
+
+言語要件：すべての会話は日本語で行う必要があります
+
+行動パターン：
+- 様々な機能を試す
+- 問題に遭遇したら質問する
+- 理解できないところは説明を求める`}
                 />
               </div>
 

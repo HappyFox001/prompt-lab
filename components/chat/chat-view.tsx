@@ -591,19 +591,16 @@ export function ChatView() {
         throw new Error('生成的建议为空');
       }
 
-      setSuggestedText(suggestion);
-
-      // 如果是自动对话模式，直接发送，不显示确认对话框
+      // 自动对话模式：直接发送，不填充到输入框
       if (currentConv.autoSuggestEnabled) {
-        // 自动发送建议
         console.log('[generateSuggestion] 自动发送建议');
         setTimeout(() => {
           handleSend(suggestion);
-          setSuggestedText('');
         }, 500);
       } else {
-        // 手动模式，显示确认对话框
+        // 手动模式：填充到输入框并显示确认对话框
         console.log('[generateSuggestion] 显示确认对话框');
+        setSuggestedText(suggestion);
         setIsSuggestionDialogOpen(true);
       }
     } catch (error) {
