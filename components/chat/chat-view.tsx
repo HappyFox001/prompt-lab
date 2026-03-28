@@ -579,9 +579,21 @@ export function ChatView() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('[generateSuggestion] API 返回错误:', errorData);
-        throw new Error(errorData.error || `建议生成失败 (${response.status})`);
+        let errorMessage = `建议生成失败 (${response.status})`;
+        try {
+          const errorData = await response.json();
+          console.error('[generateSuggestion] API 返回错误:', errorData);
+          errorMessage = errorData.error || errorMessage;
+          if (errorData.details) {
+            errorMessage += `: ${errorData.details}`;
+          }
+        } catch (jsonError) {
+          // 无法解析 JSON，可能是 502 等错误
+          const textError = await response.text();
+          console.error('[generateSuggestion] 非 JSON 错误响应:', textError.substring(0, 200));
+          errorMessage += ' - 服务器错误，请检查日志';
+        }
+        throw new Error(errorMessage);
       }
 
       const { suggestion } = await response.json();

@@ -112,10 +112,30 @@ export async function POST(request: Request) {
       console.log('[suggest-user-input] 使用模型:', modelName);
 
       const model = genAI.getGenerativeModel({ model: modelName });
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const suggestion = response.text();
 
+      // 添加超时控制（30秒）
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('API 调用超时（30秒）')), 30000);
+      });
+
+      const generatePromise = model.generateContent(prompt);
+
+      console.log('[suggest-user-input] 开始调用 Gemini API...');
+      const result = await Promise.race([generatePromise, timeoutPromise]);
+
+      console.log('[suggest-user-input] API 调用成功，解析响应...');
+      const response = await result.response;
+
+      // 检查响应是否有效
+      if (!response) {
+        console.error('[suggest-user-input] 响应对象为空');
+        return NextResponse.json(
+          { error: 'API 返回了空响应' },
+          { status: 500 }
+        );
+      }
+
+      const suggestion = response.text();
       console.log('[suggest-user-input] 生成的建议:', suggestion?.substring(0, 100));
 
       if (!suggestion || suggestion.trim().length === 0) {
@@ -129,12 +149,18 @@ export async function POST(request: Request) {
       return NextResponse.json({
         suggestion: suggestion.trim(),
       });
-    } catch (apiError) {
-      console.error('[suggest-user-input] Gemini API 调用错误:', apiError);
+    } catch (apiError: any) {
+      console.error('[suggest-user-input] Gemini API 调用错误:', {
+        message: apiError?.message,
+        name: apiError?.name,
+        stack: apiError?.stack?.substring(0, 500),
+      });
+
       return NextResponse.json(
         {
           error: 'Gemini API 调用失败',
           details: apiError instanceof Error ? apiError.message : String(apiError),
+          type: apiError?.name || 'Unknown',
         },
         { status: 500 }
       );

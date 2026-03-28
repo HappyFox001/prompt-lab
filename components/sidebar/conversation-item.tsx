@@ -25,9 +25,9 @@ export function ConversationItem({
     }
   };
 
-  // 限制标题最多显示15个字符
-  const displayTitle = conversation.title.length > 15
-    ? conversation.title.slice(0, 15) + '...'
+  // 限制标题最多显示5个字符
+  const displayTitle = conversation.title.length > 5
+    ? conversation.title.slice(0, 5) + '...'
     : conversation.title;
 
   return (
