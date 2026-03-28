@@ -1,0 +1,317 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { X, Plus, Trash2, Check, User } from 'lucide-react';
+import { UserPrompt } from '@/lib/types';
+import { indexedDB_storage } from '@/lib/indexeddb';
+import { cn } from '@/lib/utils';
+
+interface UserPromptDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentPromptId?: string;
+  autoSuggestEnabled?: boolean;
+  onSelectPrompt: (promptId: string | undefined, autoSuggest: boolean) => void;
+}
+
+export function UserPromptDialog({
+  isOpen,
+  onClose,
+  currentPromptId,
+  autoSuggestEnabled = false,
+  onSelectPrompt,
+}: UserPromptDialogProps) {
+  const [prompts, setPrompts] = useState<UserPrompt[]>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState<Partial<UserPrompt>>({
+    name: '',
+    content: '',
+    description: '',
+  });
+  const [tempAutoSuggest, setTempAutoSuggest] = useState(autoSuggestEnabled);
+
+  // 加载用户提示词列表
+  useEffect(() => {
+    if (isOpen) {
+      loadPrompts();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    setTempAutoSuggest(autoSuggestEnabled);
+  }, [autoSuggestEnabled, isOpen]);
+
+  const loadPrompts = async () => {
+    const loaded = await indexedDB_storage.getUserPrompts();
+    setPrompts(loaded);
+  };
+
+  const handleCreateNew = () => {
+    setEditingPrompt({
+      name: '',
+      content: '',
+      description: '',
+    });
+    setIsEditing(true);
+  };
+
+  const handleEdit = (prompt: UserPrompt) => {
+    setEditingPrompt(prompt);
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!editingPrompt.name?.trim() || !editingPrompt.content?.trim()) {
+      return;
+    }
+
+    const now = new Date();
+    const prompt: UserPrompt = {
+      id: editingPrompt.id || `user-prompt-${Date.now()}`,
+      name: editingPrompt.name.trim(),
+      content: editingPrompt.content.trim(),
+      description: editingPrompt.description?.trim() || '',
+      createdAt: editingPrompt.createdAt || now,
+      updatedAt: now,
+    };
+
+    await indexedDB_storage.saveUserPrompt(prompt);
+    await loadPrompts();
+    setIsEditing(false);
+    setEditingPrompt({ name: '', content: '', description: '' });
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm('このユーザープロンプトを削除してもよろしいですか？')) {
+      await indexedDB_storage.deleteUserPrompt(id);
+      await loadPrompts();
+      if (currentPromptId === id) {
+        onSelectPrompt(undefined, false);
+      }
+    }
+  };
+
+  const handleSelect = (promptId: string | undefined) => {
+    onSelectPrompt(promptId, promptId ? tempAutoSuggest : false);
+    onClose();
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditingPrompt({ name: '', content: '', description: '' });
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="relative w-full max-w-3xl max-h-[90vh] bg-surface-primary rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-border-light">
+        {/* 头部 */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
+          <h2 className="text-xl font-semibold text-text-primary flex items-center gap-2">
+            <User className="h-5 w-5 text-accent" />
+            {isEditing ? (editingPrompt.id ? '编辑用户提示词' : '创建用户提示词') : '用户提示词管理'}
+          </h2>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-surface-hover transition-colors"
+          >
+            <X className="h-5 w-5 text-text-secondary" />
+          </button>
+        </div>
+
+        {/* 内容区域 */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {isEditing ? (
+            // 编辑表单
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  提示词名称 *
+                </label>
+                <input
+                  type="text"
+                  value={editingPrompt.name || ''}
+                  onChange={(e) => setEditingPrompt({ ...editingPrompt, name: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+                  placeholder="例如：好奇的学生、专业评论家、好友"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  简短描述（可选）
+                </label>
+                <input
+                  type="text"
+                  value={editingPrompt.description || ''}
+                  onChange={(e) => setEditingPrompt({ ...editingPrompt, description: e.target.value })}
+                  className="w-full px-4 py-2.5 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
+                  placeholder="简单说明这个提示词的用途或特点"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-primary mb-2">
+                  用户角色设定 *
+                  <span className="ml-2 text-xs text-text-tertiary">
+                    AI会以此角色生成发言
+                  </span>
+                </label>
+                <textarea
+                  value={editingPrompt.content || ''}
+                  onChange={(e) => setEditingPrompt({ ...editingPrompt, content: e.target.value })}
+                  className="w-full px-4 py-3 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all resize-none"
+                  rows={12}
+                  placeholder={`请描述用户的角色、性格和行为模式。
+
+例如：
+你是一个充满好奇心的学生。
+- 对新知识充满兴趣
+- 经常提问
+- 为了加深理解会寻求具体例子
+- 友好且口语化的语气
+
+AI将根据这个提示词生成用户接下来应该说的内容。`}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <Button
+                  variant="submit"
+                  onClick={handleSave}
+                  disabled={!editingPrompt.name?.trim() || !editingPrompt.content?.trim()}
+                  className="flex-1"
+                >
+                  <Check className="h-4 w-4 mr-2" />
+                  保存
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={handleCancelEdit}
+                  className="flex-1"
+                >
+                  取消
+                </Button>
+              </div>
+            </div>
+          ) : (
+            // 列表视图
+            <div className="space-y-3">
+              {/* 创建新提示词按钮 */}
+              <button
+                onClick={handleCreateNew}
+                className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent flex items-center justify-center gap-2"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="font-medium">创建新的用户提示词</span>
+              </button>
+
+              {/* 无提示词选项 */}
+              <button
+                onClick={() => handleSelect(undefined)}
+                className={cn(
+                  'w-full px-4 py-3 rounded-lg border transition-all text-left',
+                  !currentPromptId
+                    ? 'border-accent bg-accent/5 text-accent'
+                    : 'border-border-medium hover:border-accent/50 hover:bg-surface-hover'
+                )}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-medium">无用户提示词</div>
+                  {!currentPromptId && (
+                    <Check className="h-5 w-5 text-accent" />
+                  )}
+                </div>
+                <div className="text-xs text-text-tertiary mt-1">
+                  不使用自动建议
+                </div>
+              </button>
+
+              {/* 提示词列表 */}
+              {prompts.map((prompt) => (
+                <div
+                  key={prompt.id}
+                  className={cn(
+                    'w-full px-4 py-3 rounded-lg border transition-all',
+                    currentPromptId === prompt.id
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border-medium hover:border-accent/50 hover:bg-surface-hover'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <button
+                      onClick={() => handleSelect(prompt.id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className="font-medium text-text-primary">{prompt.name}</div>
+                        {currentPromptId === prompt.id && (
+                          <Check className="h-4 w-4 text-accent" />
+                        )}
+                      </div>
+                      {prompt.description && (
+                        <div className="text-xs text-text-tertiary mt-1">
+                          {prompt.description}
+                        </div>
+                      )}
+                      <div className="text-sm text-text-secondary mt-2 line-clamp-2">
+                        {prompt.content}
+                      </div>
+                    </button>
+                    <div className="flex gap-2 shrink-0">
+                      <button
+                        onClick={() => handleEdit(prompt)}
+                        className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
+                        title="编辑"
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDelete(prompt.id)}
+                        className="p-2 rounded-lg hover:bg-red-500/10 transition-colors text-text-secondary hover:text-red-500"
+                        title="删除"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {prompts.length === 0 && (
+                <div className="text-center py-12 text-text-tertiary">
+                  <p>还没有创建用户提示词</p>
+                  <p className="text-sm mt-2">点击上方按钮创建第一个提示词</p>
+                </div>
+              )}
+
+              {/* 自动建议开关（仅在选择了提示词时显示） */}
+              {currentPromptId && (
+                <div className="mt-6 p-4 rounded-lg border border-border-light bg-surface-secondary">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempAutoSuggest}
+                      onChange={(e) => setTempAutoSuggest(e.target.checked)}
+                      className="mt-0.5 h-5 w-5 rounded border-border-medium text-accent focus:ring-2 focus:ring-accent/20"
+                    />
+                    <div className="flex-1">
+                      <div className="font-medium text-text-primary">启用自动建议</div>
+                      <div className="text-xs text-text-tertiary mt-1">
+                        AI响应后，会自动生成用户的下一句话。你可以确认后再发送。
+                      </div>
+                    </div>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

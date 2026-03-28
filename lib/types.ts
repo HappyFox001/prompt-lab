@@ -92,6 +92,8 @@ export interface Conversation {
   createdAt: Date;
   updatedAt: Date;
   systemPromptId?: string; // 关联的系统提示词 ID
+  userPromptId?: string; // 关联的用户提示词 ID
+  autoSuggestEnabled?: boolean; // 是否启用自动建议用户输入
   contextWindowSize?: number; // 发送给LLM的最近消息条数，默认10
 }
 
@@ -105,6 +107,15 @@ export interface SystemPrompt {
   id: string;
   name: string;
   content: string;
+  description?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserPrompt {
+  id: string;
+  name: string; // 提示词名称，如"好奇学生"
+  content: string; // 用户角色/目标/行为描述
   description?: string;
   createdAt: Date;
   updatedAt: Date;

@@ -1,9 +1,10 @@
-import { Conversation, SystemPrompt } from './types';
+import { Conversation, SystemPrompt, UserPrompt } from './types';
 
 const DB_NAME = 'promptlab';
-const DB_VERSION = 2;
+const DB_VERSION = 3; // 升级数据库版本以添加 userPrompts 存储
 const STORE_NAME = 'conversations';
 const SYSTEM_PROMPTS_STORE = 'systemPrompts';
+const USER_PROMPTS_STORE = 'userPrompts'; // 新增用户提示词存储
 
 // 打开数据库
 function openDB(): Promise<IDBDatabase> {
@@ -26,6 +27,12 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(SYSTEM_PROMPTS_STORE)) {
         const promptStore = db.createObjectStore(SYSTEM_PROMPTS_STORE, { keyPath: 'id' });
         promptStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+      }
+
+      // 创建用户提示词存储
+      if (!db.objectStoreNames.contains(USER_PROMPTS_STORE)) {
+        const userPromptStore = db.createObjectStore(USER_PROMPTS_STORE, { keyPath: 'id' });
+        userPromptStore.createIndex('updatedAt', 'updatedAt', { unique: false });
       }
     };
   });
@@ -265,6 +272,114 @@ export const indexedDB_storage = {
       });
     } catch (error) {
       console.error('Failed to delete system prompt from IndexedDB:', error);
+    }
+  },
+
+  // ===== 用户提示词管理 =====
+
+  // 获取所有用户提示词
+  async getUserPrompts(): Promise<UserPrompt[]> {
+    if (typeof window === 'undefined') return [];
+
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(USER_PROMPTS_STORE, 'readonly');
+      const store = transaction.objectStore(USER_PROMPTS_STORE);
+      const index = store.index('updatedAt');
+
+      return new Promise((resolve, reject) => {
+        const request = index.openCursor(null, 'prev'); // 按更新时间倒序
+        const prompts: UserPrompt[] = [];
+
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            const prompt = cursor.value;
+            prompts.push({
+              ...prompt,
+              createdAt: new Date(prompt.createdAt),
+              updatedAt: new Date(prompt.updatedAt),
+            });
+            cursor.continue();
+          } else {
+            resolve(prompts);
+          }
+        };
+
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to load user prompts from IndexedDB:', error);
+      return [];
+    }
+  },
+
+  // 获取单个用户提示词
+  async getUserPrompt(id: string): Promise<UserPrompt | null> {
+    if (typeof window === 'undefined') return null;
+
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(USER_PROMPTS_STORE, 'readonly');
+      const store = transaction.objectStore(USER_PROMPTS_STORE);
+
+      return new Promise((resolve, reject) => {
+        const request = store.get(id);
+        request.onsuccess = () => {
+          const prompt = request.result;
+          if (prompt) {
+            resolve({
+              ...prompt,
+              createdAt: new Date(prompt.createdAt),
+              updatedAt: new Date(prompt.updatedAt),
+            });
+          } else {
+            resolve(null);
+          }
+        };
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to get user prompt from IndexedDB:', error);
+      return null;
+    }
+  },
+
+  // 保存用户提示词
+  async saveUserPrompt(prompt: UserPrompt): Promise<void> {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(USER_PROMPTS_STORE, 'readwrite');
+      const store = transaction.objectStore(USER_PROMPTS_STORE);
+
+      await new Promise<void>((resolve, reject) => {
+        const request = store.put(prompt);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to save user prompt to IndexedDB:', error);
+    }
+  },
+
+  // 删除用户提示词
+  async deleteUserPrompt(id: string): Promise<void> {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(USER_PROMPTS_STORE, 'readwrite');
+      const store = transaction.objectStore(USER_PROMPTS_STORE);
+
+      await new Promise<void>((resolve, reject) => {
+        const request = store.delete(id);
+        request.onsuccess = () => resolve();
+        request.onerror = () => reject(request.error);
+      });
+    } catch (error) {
+      console.error('Failed to delete user prompt from IndexedDB:', error);
     }
   },
 };

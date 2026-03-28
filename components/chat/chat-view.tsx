@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 // ModelSelector 已移除（双层架构使用固定模型）
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SystemPromptDialog } from './system-prompt-dialog';
+import { UserPromptDialog } from './user-prompt-dialog';
+import { SuggestionConfirmDialog } from './suggestion-confirm-dialog';
 import { ContextDialog } from './context-dialog';
 import { StatesDialog } from './states-dialog';
 import { EventsDialog } from './events-dialog';
@@ -23,13 +25,18 @@ export function ChatView() {
   const [isLoading, setIsLoading] = useState(false);
   // selectedModelId 已移除（双层架构使用固定模型）
   const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
+  const [isUserPromptDialogOpen, setIsUserPromptDialogOpen] = useState(false);
+  const [isSuggestionDialogOpen, setIsSuggestionDialogOpen] = useState(false);
   const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
   const [isStatesDialogOpen, setIsStatesDialogOpen] = useState(false);
   const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
   const [isTestPanelOpen, setIsTestPanelOpen] = useState(true);
   const [testPanelWidth, setTestPanelWidth] = useState(280); // 右侧面板宽度
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<SystemPrompt | null>(null);
+  const [currentUserPrompt, setCurrentUserPrompt] = useState<UserPrompt | null>(null);
   const [testPrompts, setTestPrompts] = useState<PromptTestItem[]>([]);
+  const [suggestedText, setSuggestedText] = useState('');
+  const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
 
   // 初始化：从 IndexedDB 加载或创建新对话
   useEffect(() => {
@@ -81,6 +88,20 @@ export function ChatView() {
       }
     }
     loadSystemPrompt();
+  }, [currentConversationId, conversations]);
+
+  // 加载当前对话的用户提示词
+  useEffect(() => {
+    async function loadUserPrompt() {
+      const currentConv = conversations.find((c) => c.id === currentConversationId);
+      if (currentConv?.userPromptId) {
+        const prompt = await indexedDB_storage.getUserPrompt(currentConv.userPromptId);
+        setCurrentUserPrompt(prompt);
+      } else {
+        setCurrentUserPrompt(null);
+      }
+    }
+    loadUserPrompt();
   }, [currentConversationId, conversations]);
 
   // 获取当前对话
@@ -153,6 +174,8 @@ export function ChatView() {
         return conv;
       })
     );
+
+    let fullContent = ''; // 移到外层作用域以便 finally 块访问
 
     try {
       // 获取当前对话
@@ -253,7 +276,6 @@ export function ChatView() {
         throw new Error('无法读取响应流');
       }
 
-      let fullContent = '';
       let emotionalState = null;
 
       while (true) {
@@ -513,6 +535,73 @@ export function ChatView() {
       );
     } finally {
       setIsLoading(false);
+
+      // 检查是否需要自动生成用户输入建议
+      const currentConv = conversations.find((c) => c.id === currentConversationId);
+      if (currentConv?.autoSuggestEnabled && currentConv?.userPromptId && fullContent) {
+        setTimeout(() => {
+          generateSuggestion(fullContent, undefined);
+        }, 500);
+      }
+    }
+  };
+
+  // 生成用户输入建议
+  const generateSuggestion = async (lastAIResponse: string, rejectionReason?: string) => {
+    if (!currentConversationId || !currentUserPrompt) return;
+
+    setIsGeneratingSuggestion(true);
+    try {
+      const currentConv = conversations.find((c) => c.id === currentConversationId);
+      if (!currentConv) return;
+
+      const response = await fetch('/api/suggest-user-input', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userPrompt: currentUserPrompt.content,
+          messages: currentConv.messages.slice(-15), // 最近15条
+          lastAIResponse,
+          rejectionReason,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('建议生成失败');
+      }
+
+      const { suggestion } = await response.json();
+      setSuggestedText(suggestion);
+      setIsSuggestionDialogOpen(true);
+    } catch (error) {
+      console.error('建议生成错误:', error);
+      // 错误提示（可选）
+    } finally {
+      setIsGeneratingSuggestion(false);
+    }
+  };
+
+  // 确认发送建议
+  const handleConfirmSuggestion = () => {
+    setIsSuggestionDialogOpen(false);
+    // suggestedText 已经填充到输入框，用户点击确认后直接发送
+    if (suggestedText.trim()) {
+      handleSend(suggestedText.trim());
+      setSuggestedText('');
+    }
+  };
+
+  // 拒绝建议并重新生成
+  const handleRejectSuggestion = (reason: string) => {
+    const currentConv = conversations.find((c) => c.id === currentConversationId);
+    if (!currentConv) return;
+
+    const lastAssistantMessage = [...currentConv.messages]
+      .reverse()
+      .find((m) => m.role === 'assistant');
+
+    if (lastAssistantMessage) {
+      generateSuggestion(lastAssistantMessage.content, reason);
     }
   };
 
@@ -675,6 +764,31 @@ export function ChatView() {
     }
   };
 
+  const handleSelectUserPrompt = async (promptId: string | undefined, autoSuggest: boolean) => {
+    // 更新当前对话的用户提示词和自动建议设置
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            userPromptId: promptId,
+            autoSuggestEnabled: autoSuggest,
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+
+    // 加载用户提示词内容
+    if (promptId) {
+      const prompt = await indexedDB_storage.getUserPrompt(promptId);
+      setCurrentUserPrompt(prompt);
+    } else {
+      setCurrentUserPrompt(null);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-surface-primary">
       {/* 侧边栏 */}
@@ -740,6 +854,9 @@ export function ChatView() {
           onStop={handleStop}
           onOpenStates={() => setIsStatesDialogOpen(true)}
           onOpenEvents={() => setIsEventsDialogOpen(true)}
+          onOpenUserPrompt={() => setIsUserPromptDialogOpen(true)}
+          suggestedText={suggestedText}
+          onSuggestedTextChange={setSuggestedText}
         />
       </div>
 
@@ -749,6 +866,28 @@ export function ChatView() {
         onClose={() => setIsPromptDialogOpen(false)}
         currentPromptId={currentConversation?.systemPromptId}
         onSelectPrompt={handleSelectSystemPrompt}
+      />
+
+      {/* 用户提示词对话框 */}
+      <UserPromptDialog
+        isOpen={isUserPromptDialogOpen}
+        onClose={() => setIsUserPromptDialogOpen(false)}
+        currentPromptId={currentConversation?.userPromptId}
+        autoSuggestEnabled={currentConversation?.autoSuggestEnabled}
+        onSelectPrompt={handleSelectUserPrompt}
+      />
+
+      {/* 建议确认对话框 */}
+      <SuggestionConfirmDialog
+        isOpen={isSuggestionDialogOpen}
+        onClose={() => {
+          setIsSuggestionDialogOpen(false);
+          setSuggestedText('');
+        }}
+        suggestion={suggestedText}
+        onConfirm={handleConfirmSuggestion}
+        onReject={handleRejectSuggestion}
+        isGenerating={isGeneratingSuggestion}
       />
 
       {/* 上下文对话框 */}

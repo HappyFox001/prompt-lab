@@ -2,7 +2,7 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Square, Activity, Calendar } from 'lucide-react';
+import { Send, Square, Activity, Calendar, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
@@ -12,11 +12,31 @@ interface ChatInputProps {
   onStop?: () => void;
   onOpenStates?: () => void;
   onOpenEvents?: () => void;
+  onOpenUserPrompt?: () => void;
+  suggestedText?: string;
+  onSuggestedTextChange?: (text: string) => void;
 }
 
-export function ChatInput({ onSend, disabled, isLoading, onStop, onOpenStates, onOpenEvents }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  disabled,
+  isLoading,
+  onStop,
+  onOpenStates,
+  onOpenEvents,
+  onOpenUserPrompt,
+  suggestedText = '',
+  onSuggestedTextChange,
+}: ChatInputProps) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // 当有建议文本时，填充到输入框
+  useEffect(() => {
+    if (suggestedText) {
+      setInput(suggestedText);
+    }
+  }, [suggestedText]);
 
   // 自动调整 textarea 高度
   useEffect(() => {
@@ -30,6 +50,18 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, onOpenStates, o
     if (input.trim() && !disabled && !isLoading) {
       onSend(input.trim());
       setInput('');
+      // 清除建议状态
+      if (onSuggestedTextChange) {
+        onSuggestedTextChange('');
+      }
+    }
+  };
+
+  const handleInputChange = (newValue: string) => {
+    setInput(newValue);
+    // 用户编辑时清除建议状态
+    if (suggestedText && newValue !== suggestedText && onSuggestedTextChange) {
+      onSuggestedTextChange('');
     }
   };
 
@@ -46,6 +78,15 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, onOpenStates, o
         <div className="relative flex items-center gap-2">
           {/* 左侧功能按钮 */}
           <div className="flex gap-1">
+            {onOpenUserPrompt && (
+              <button
+                onClick={onOpenUserPrompt}
+                className="h-10 w-10 flex items-center justify-center rounded-lg border border-border-light bg-surface-secondary text-text-tertiary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all"
+                title="用户提示词"
+              >
+                <User className="h-4 w-4" strokeWidth={2} />
+              </button>
+            )}
             {onOpenStates && (
               <button
                 onClick={onOpenStates}
@@ -71,7 +112,7 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, onOpenStates, o
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => handleInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Send a message..."
               disabled={disabled || isLoading}
@@ -82,9 +123,18 @@ export function ChatInput({ onSend, disabled, isLoading, onStop, onOpenStates, o
                 'focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
                 (disabled || isLoading)
                   ? 'border-border-light opacity-50 cursor-not-allowed'
+                  : suggestedText
+                  ? 'border-accent bg-blue-50 shadow-md'
                   : 'border-border-medium hover:border-accent/50 shadow-sm hover:shadow-md'
               )}
             />
+            {/* 建议状态提示 */}
+            {suggestedText && (
+              <div className="absolute -top-8 left-0 text-xs text-accent flex items-center gap-1">
+                <User className="h-3 w-3" />
+                AI 建议（可编辑）
+              </div>
+            )}
           </div>
 
           {/* 发送/停止按钮 */}
