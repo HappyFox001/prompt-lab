@@ -37,13 +37,6 @@ export function ChatInput({
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 当有建议文本时，填充到输入框
-  useEffect(() => {
-    if (suggestedText) {
-      setInput(suggestedText);
-    }
-  }, [suggestedText]);
-
   // 自动调整 textarea 高度
   useEffect(() => {
     if (textareaRef.current) {
