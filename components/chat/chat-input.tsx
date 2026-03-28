@@ -49,18 +49,6 @@ export function ChatInput({
     if (input.trim() && !disabled && !isLoading) {
       onSend(input.trim());
       setInput('');
-      // 清除建议状态
-      if (onSuggestedTextChange) {
-        onSuggestedTextChange('');
-      }
-    }
-  };
-
-  const handleInputChange = (newValue: string) => {
-    setInput(newValue);
-    // 用户编辑时清除建议状态
-    if (suggestedText && newValue !== suggestedText && onSuggestedTextChange) {
-      onSuggestedTextChange('');
     }
   };
 
@@ -111,7 +99,7 @@ export function ChatInput({
             <textarea
               ref={textareaRef}
               value={input}
-              onChange={(e) => handleInputChange(e.target.value)}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Send a message..."
               disabled={disabled || isLoading}
@@ -122,18 +110,9 @@ export function ChatInput({
                 'focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20',
                 (disabled || isLoading)
                   ? 'border-border-light opacity-50 cursor-not-allowed'
-                  : suggestedText
-                  ? 'border-accent bg-blue-50 shadow-md'
                   : 'border-border-medium hover:border-accent/50 shadow-sm hover:shadow-md'
               )}
             />
-            {/* 建议状态提示 */}
-            {suggestedText && (
-              <div className="absolute -top-8 left-0 text-xs text-accent flex items-center gap-1">
-                <User className="h-3 w-3" />
-                AI 建议（可编辑）
-              </div>
-            )}
           </div>
 
           {/* 发送/停止按钮 */}
