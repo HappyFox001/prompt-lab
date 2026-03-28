@@ -54,15 +54,40 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { userPrompt, messages, lastAIResponse, rejectionReason } = body;
 
+    console.log('[suggest-user-input] 收到请求:', {
+      hasUserPrompt: !!userPrompt,
+      messagesCount: messages?.length || 0,
+      lastAIResponse: lastAIResponse?.substring(0, 50),
+      hasRejectionReason: !!rejectionReason,
+    });
+
     // 入力验证
-    if (!userPrompt || !messages || !lastAIResponse) {
+    if (!userPrompt) {
+      console.error('[suggest-user-input] 缺少 userPrompt');
       return NextResponse.json(
-        { error: '缺少必要参数' },
+        { error: '缺少用户提示词' },
+        { status: 400 }
+      );
+    }
+
+    if (!messages) {
+      console.error('[suggest-user-input] 缺少 messages');
+      return NextResponse.json(
+        { error: '缺少对话历史' },
+        { status: 400 }
+      );
+    }
+
+    if (!lastAIResponse) {
+      console.error('[suggest-user-input] 缺少 lastAIResponse');
+      return NextResponse.json(
+        { error: '缺少 AI 回复' },
         { status: 400 }
       );
     }
 
     if (!process.env.GEMINI_API_KEY) {
+      console.error('[suggest-user-input] 未设置 GEMINI_API_KEY');
       return NextResponse.json(
         { error: '未设置 GEMINI_API_KEY' },
         { status: 500 }
@@ -77,24 +102,43 @@ export async function POST(request: Request) {
       rejectionReason,
     });
 
-    // 调用 Gemini Pro 生成建议
-    const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const suggestion = response.text();
+    console.log('[suggest-user-input] 构建的提示词长度:', prompt.length);
 
-    if (!suggestion || suggestion.trim().length === 0) {
+    // 调用 Gemini Pro 生成建议（使用 Pro 模型以获得更好的角色扮演效果）
+    try {
+      const modelName = process.env.GEMINI_PRO_MODEL || 'gemini-3.1-pro-preview';
+      console.log('[suggest-user-input] 使用模型:', modelName);
+
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const suggestion = response.text();
+
+      console.log('[suggest-user-input] 生成的建议:', suggestion?.substring(0, 100));
+
+      if (!suggestion || suggestion.trim().length === 0) {
+        console.error('[suggest-user-input] 生成的建议为空');
+        return NextResponse.json(
+          { error: '建议生成失败：返回内容为空' },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        suggestion: suggestion.trim(),
+      });
+    } catch (apiError) {
+      console.error('[suggest-user-input] Gemini API 调用错误:', apiError);
       return NextResponse.json(
-        { error: '建议生成失败' },
+        {
+          error: 'Gemini API 调用失败',
+          details: apiError instanceof Error ? apiError.message : String(apiError),
+        },
         { status: 500 }
       );
     }
-
-    return NextResponse.json({
-      suggestion: suggestion.trim(),
-    });
   } catch (error) {
-    console.error('建议生成错误:', error);
+    console.error('[suggest-user-input] 未预期的错误:', error);
     return NextResponse.json(
       {
         error: '生成建议时发生错误',

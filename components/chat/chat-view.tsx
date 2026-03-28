@@ -548,12 +548,24 @@ export function ChatView() {
 
   // 生成用户输入建议
   const generateSuggestion = async (lastAIResponse: string, rejectionReason?: string) => {
-    if (!currentConversationId || !currentUserPrompt) return;
+    if (!currentConversationId || !currentUserPrompt) {
+      console.error('[generateSuggestion] 缺少必要条件');
+      return;
+    }
 
     setIsGeneratingSuggestion(true);
     try {
       const currentConv = conversations.find((c) => c.id === currentConversationId);
-      if (!currentConv) return;
+      if (!currentConv) {
+        console.error('[generateSuggestion] 找不到当前对话');
+        return;
+      }
+
+      console.log('[generateSuggestion] 开始生成建议', {
+        lastAIResponseLength: lastAIResponse?.length || 0,
+        messagesCount: currentConv.messages.length,
+        hasRejectionReason: !!rejectionReason,
+      });
 
       const response = await fetch('/api/suggest-user-input', {
         method: 'POST',
@@ -567,26 +579,56 @@ export function ChatView() {
       });
 
       if (!response.ok) {
-        throw new Error('建议生成失败');
+        const errorData = await response.json();
+        console.error('[generateSuggestion] API 返回错误:', errorData);
+        throw new Error(errorData.error || `建议生成失败 (${response.status})`);
       }
 
       const { suggestion } = await response.json();
+      console.log('[generateSuggestion] 生成成功:', suggestion?.substring(0, 50));
+
+      if (!suggestion || !suggestion.trim()) {
+        throw new Error('生成的建议为空');
+      }
+
       setSuggestedText(suggestion);
 
       // 如果是自动对话模式，直接发送，不显示确认对话框
       if (currentConv.autoSuggestEnabled) {
         // 自动发送建议
+        console.log('[generateSuggestion] 自动发送建议');
         setTimeout(() => {
           handleSend(suggestion);
           setSuggestedText('');
         }, 500);
       } else {
         // 手动模式，显示确认对话框
+        console.log('[generateSuggestion] 显示确认对话框');
         setIsSuggestionDialogOpen(true);
       }
     } catch (error) {
-      console.error('建议生成错误:', error);
-      // 错误提示（可选）
+      console.error('[generateSuggestion] 错误:', error);
+
+      // 如果是自动对话模式，自动关闭开关
+      const currentConv = conversations.find((c) => c.id === currentConversationId);
+      if (currentConv?.autoSuggestEnabled) {
+        console.log('[generateSuggestion] 由于错误，自动关闭自动对话');
+        setConversations((prevConvs) =>
+          prevConvs.map((conv) => {
+            if (conv.id === currentConversationId) {
+              return {
+                ...conv,
+                autoSuggestEnabled: false,
+                updatedAt: new Date(),
+              };
+            }
+            return conv;
+          })
+        );
+      }
+
+      // 显示错误提示
+      alert(`生成建议失败: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsGeneratingSuggestion(false);
     }
