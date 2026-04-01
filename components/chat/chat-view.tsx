@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 // ModelSelector 已移除（双层架构使用固定模型）
@@ -15,9 +15,10 @@ import { StatesDialog } from './states-dialog';
 import { EventsDialog } from './events-dialog';
 import { PromptTestPanel } from './prompt-test-panel';
 import { indexedDB_storage } from '@/lib/indexeddb';
-import { FileText, History } from 'lucide-react';
+import { FileText, History, Tag } from 'lucide-react';
 import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
 import { PRESET_PROMPTS } from '@/lib/preset-prompts';
+import { ExternalEventsDialog } from './external-events-dialog';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -30,6 +31,7 @@ export function ChatView() {
   const [isContextDialogOpen, setIsContextDialogOpen] = useState(false);
   const [isStatesDialogOpen, setIsStatesDialogOpen] = useState(false);
   const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
+  const [isExternalEventsDialogOpen, setIsExternalEventsDialogOpen] = useState(false);
   const [isTestPanelOpen, setIsTestPanelOpen] = useState(true);
   const [testPanelWidth, setTestPanelWidth] = useState(280); // 右侧面板宽度
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<SystemPrompt | null>(null);
@@ -224,7 +226,33 @@ export function ChatView() {
         }
       }
 
-      // 4. 添加最近的消息（不再添加状态信息，由后端处理）
+      // 4. 外部事件匹配（仅注入到第一层 systemPrompt 中，保持现有风格）
+      const externalEvents = currentConv.externalEvents || [];
+      const recentTextBlob = recentMessages
+        .map((m) => m.content)
+        .join('\n')
+        .toLowerCase();
+
+      const matchedExternalEvents = externalEvents.filter((ev) => {
+        if (!ev.enabled) return false;
+        const keys = (ev.keys || []).map((k) => k.toLowerCase());
+        return keys.some((k) => k && recentTextBlob.includes(k));
+      });
+
+      let externalEventsPrompt = '';
+      if (matchedExternalEvents.length > 0) {
+        // 保持与现有系统片段相似的风格：使用【】标题 + 列表
+        const items = matchedExternalEvents
+          .map((ev) => `- イベント名: ${ev.name} → 付加情報: ${ev.content}`)
+          .join('\n');
+        externalEventsPrompt = `\n\n【外部イベント（キーワード一致）】\n次のイベント情報を文脈理解に活用し、応答の一貫性を保ってください：\n${items}\n`;
+      }
+
+      // 5. 拼接系统提示词：无论是否配置系统提示词，若有外部事件命中，则注入
+      const baseSystemPrompt = currentSystemPrompt?.content || 'あなたは親しみやすいAIアシスタントです。';
+      const systemPromptToSend = `${baseSystemPrompt}${externalEventsPrompt}`;
+
+      // 6. 添加最近的消息（不再添加状态信息，由后端处理）
       const messagesToSend = [
         ...contextMessages,
         ...recentMessages.map((msg) => ({
@@ -259,7 +287,7 @@ export function ChatView() {
           messages: messagesToSend,
           conversationId: currentConversationId,
           numericStates: currentConv.numericStates || [],
-          systemPrompt: currentSystemPrompt?.content || undefined,
+          systemPrompt: systemPromptToSend || undefined,
         }),
       });
 
@@ -929,6 +957,15 @@ export function ChatView() {
                   {currentSystemPrompt?.name || '系统提示词'}
                 </span>
               </button>
+              {/* 外部事件按钮 */}
+              <button
+                onClick={() => setIsExternalEventsDialogOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
+                title="外部事件"
+              >
+                <Tag className="h-4 w-4" />
+                <span className="text-sm font-medium">外部事件</span>
+              </button>
               {/* 上下文按钮 */}
               <button
                 onClick={() => setIsContextDialogOpen(true)}
@@ -1008,6 +1045,28 @@ export function ChatView() {
         onUpdateSummary={handleManualUpdateSummary}
       />
 
+      {/* 外部事件对话框 */}
+      <ExternalEventsDialog
+        isOpen={isExternalEventsDialogOpen}
+        onClose={() => setIsExternalEventsDialogOpen(false)}
+        events={currentConversation?.externalEvents || []}
+        onChange={(evts) => {
+          if (!currentConversationId) return;
+          setConversations((prevConvs) =>
+            prevConvs.map((conv) => {
+              if (conv.id === currentConversationId) {
+                return {
+                  ...conv,
+                  externalEvents: evts,
+                  updatedAt: new Date(),
+                };
+              }
+              return conv;
+            })
+          );
+        }}
+      />
+
       {/* 数值状态对话框 */}
       <StatesDialog
         isOpen={isStatesDialogOpen}
@@ -1047,6 +1106,7 @@ function createNewConversation(): Conversation {
     numericStates: [],
     memoryEvents: [],
     enableEventMemory: false,
+    externalEvents: [],
     testPrompts: [...PRESET_PROMPTS], // 添加预设提示词片段（默认禁用）
     createdAt: new Date(),
     updatedAt: new Date(),

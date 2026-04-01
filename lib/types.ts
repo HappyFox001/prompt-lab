@@ -70,6 +70,17 @@ export interface MemoryEvent {
   importance: number; // 重要性等级 1-10
 }
 
+// 外部事件：基于关键字触发，向系统提示词注入额外上下文
+export interface ExternalEvent {
+  id: string;
+  name: string;        // 事件名称
+  keys: string[];      // 触发关键字（任一匹配即可）
+  content: string;     // 注入到提示词的内容
+  enabled?: boolean;   // 是否启用
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface PromptTestItem {
   id: string;
   name: string; // 提示词片段名称
@@ -89,6 +100,7 @@ export interface Conversation {
   memoryEvents?: MemoryEvent[]; // 事件记忆
   enableEventMemory?: boolean; // 是否启用事件记忆
   testPrompts?: PromptTestItem[]; // 测试提示词片段
+  externalEvents?: ExternalEvent[]; // 外部关键字事件（命中后注入到系统提示词）
   createdAt: Date;
   updatedAt: Date;
   systemPromptId?: string; // 关联的系统提示词 ID
