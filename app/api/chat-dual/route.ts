@@ -78,10 +78,12 @@ export async function POST(req: NextRequest) {
               textBuffer += text;
 
               // 在缓冲区中检测分隔符
-              const delimiterIndex = textBuffer.indexOf('###EMOTION###');
+              const delimiter = '###EMOTION###';
+              const delimiterIndex = textBuffer.indexOf(delimiter);
 
               if (delimiterIndex !== -1) {
                 // 找到分隔符
+                console.log('[情感分隔符] 检测到 ###EMOTION### 在位置:', delimiterIndex);
                 inEmotionSection = true;
 
                 // 分隔符之前的内容是正常文本
@@ -91,9 +93,10 @@ export async function POST(req: NextRequest) {
                   controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: contentBeforeDelimiter })}\n\n`));
                 }
 
-                // 分隔符之后的内容是情感数据
-                const contentAfterDelimiter = textBuffer.substring(delimiterIndex + 15); // 15 = '###EMOTION###'.length
+                // 分隔符之后的内容是情感数据（修复：使用 delimiter.length 而不是硬编码）
+                const contentAfterDelimiter = textBuffer.substring(delimiterIndex + delimiter.length);
                 emotionBuffer = contentAfterDelimiter;
+                console.log('[情感数据] 初始 buffer 长度:', emotionBuffer.length);
 
                 // 清空文本缓冲区
                 textBuffer = '';
@@ -110,7 +113,10 @@ export async function POST(req: NextRequest) {
             }
           }
 
-          // 流结束后，输出剩余的文本缓冲区（如果没有进入情感区域）
+          // 流结束后的处理
+          console.log('[流结束] inEmotionSection:', inEmotionSection, 'emotionBuffer 长度:', emotionBuffer.length);
+
+          // 输出剩余的文本缓冲区（如果没有进入情感区域）
           if (!inEmotionSection && textBuffer) {
             fullTextContent += textBuffer;
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: textBuffer })}\n\n`));
@@ -120,10 +126,32 @@ export async function POST(req: NextRequest) {
           let emotionalState = null;
           if (emotionBuffer.trim()) {
             try {
-              emotionalState = JSON.parse(emotionBuffer.trim());
-              console.log('[情感识别]', emotionalState);
-            } catch (e) {
-              console.error('解析情感状态失败:', e, 'Buffer:', emotionBuffer);
+              // 清理 emotion buffer：移除可能的额外文本和空白
+              let cleanedBuffer = emotionBuffer.trim();
+
+              // 尝试提取 JSON 对象（处理可能的前后多余文本）
+              const jsonMatch = cleanedBuffer.match(/\{[\s\S]*\}/);
+              if (jsonMatch) {
+                cleanedBuffer = jsonMatch[0];
+              } else {
+                console.warn('[情感识别] 未找到有效的 JSON 对象，Buffer 长度:', emotionBuffer.length);
+                throw new Error('未找到有效的 JSON 对象');
+              }
+
+              // 简单验证 JSON 完整性（花括号匹配）
+              const openBraces = (cleanedBuffer.match(/\{/g) || []).length;
+              const closeBraces = (cleanedBuffer.match(/\}/g) || []).length;
+              if (openBraces !== closeBraces) {
+                console.warn('[情感识别] JSON 花括号不匹配:', { openBraces, closeBraces });
+                throw new Error('JSON 格式不完整');
+              }
+
+              // 尝试解析 JSON
+              emotionalState = JSON.parse(cleanedBuffer);
+              console.log('[情感识别] 成功:', emotionalState.emotion);
+            } catch (e: any) {
+              console.error('[情感识别] 失败:', e.message);
+              // 不抛出错误到外层，确保文本内容能正常输出
             }
           }
 
@@ -187,32 +215,44 @@ function buildLayer1Prompt(
 
   const basePrompt = systemPrompt || 'あなたは親しみやすいAIアシスタントです。';
 
-  return `${basePrompt}ユーザーに日本語で返信し、返信後に感情状態を出力してください。
+  return `${basePrompt}
+
+## 【重要】ロールプレイの基本ルール
+
+あなたは「キャラクター」として、ユーザーと**自然な会話**をしてください。以下のルールを厳守すること：
+
+1. **一人称視点で話す** - 「私は〜」「僕は〜」など、キャラクターとして話す。決して三人称の物語のように「彼女は〜と言った」のような書き方をしない
+2. **口語表現を使う** - 書き言葉ではなく、話し言葉で自然に返信する（「〜だよ」「〜ね」「〜なの」など）
+3. **簡潔に話す** - 人間の会話のように、1〜3文程度の短い返信を心がける。長々と説明しない
+4. **地の文を書かない** - 「〜と微笑んだ」「〜と言いながら」のような描写は不要。セリフだけで表現する
+5. **自然なリアクション** - 質問されたら答える、話題を振られたら反応する、人間らしく会話する
 ${statesContext}
 ## 出力形式
 
-以下の形式で出力してください：
-1. まず返信テキストを出力
+以下の形式で**必ず**出力してください：
+1. まず返信テキストを出力（簡潔に、1〜3文程度）
 2. 次に区切り文字 ###EMOTION### を出力
 3. 最後に感情状態のJSONを出力
 
-例：
-こんにちは！お会いできて嬉しいです～
+【良い例】
+うん、今日は天気いいね！散歩でもする？
 ###EMOTION###
-{"emotion":"happy","intensity":0.7,"intent":"greet","valence":0.8,"arousal":0.6}
+{"emotion":"happy","intensity":0.6,"intent":"agree","valence":0.7,"arousal":0.5}
+
+【悪い例 - 長すぎる、物語調】
+今日は本当に良い天気ですね。青空が広がって、とても気持ちが良いです。こんな日は外に出て散歩したくなりますよね。一緒に公園に行きませんか？きっと楽しいと思いますよ。
 
 感情パラメータの説明：
-- emotion: 感情カテゴリ、以下から必ず選択：happy, sad, angry, surprised, fear, disgust, neutral, excited, anxious, thoughtful, loving, playful, curious, embarrassed, confident
-- intensity: 強度(0.0-1.0)
-- intent: インタラクション意図（任意）- agree(同意), think(考える), refuse(拒否), greet(挨拶), listen(傾聴)
-- subtext: 感情の詳細（任意）- shy(恥ずかしい), confident(自信がある), hesitant(ためらう), playful(遊び心)
+- emotion: 感情カテゴリ（必須）- happy, sad, angry, surprised, fear, disgust, neutral, excited, anxious, thoughtful, loving, playful, curious, embarrassed, confident
+- intensity: 強度(0.0-1.0、必須)
+- intent: インタラクション意図（任意）- agree, think, refuse, greet, listen, question, suggest
+- subtext: 感情の詳細（任意）- shy, confident, hesitant, playful, teasing, caring
 - valence: 感情価(-1.0から1.0、任意)
 - arousal: 覚醒度(0.0-1.0、任意)
-- dominance: 支配度(0.0-1.0、任意)
 
 ## 会話履歴
 
 ${conversationHistory}
 
-最後のユーザーメッセージに返信してください：`;
+最後のユーザーメッセージに、キャラクターとして自然に返信してください：`;
 }

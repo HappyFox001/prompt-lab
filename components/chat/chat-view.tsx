@@ -318,6 +318,9 @@ export function ChatView() {
             const data = line.slice(6);
             if (data === '[DONE]') continue;
 
+            // 跳过空数据
+            if (!data.trim()) continue;
+
             try {
               const parsed = JSON.parse(data);
 
@@ -350,7 +353,11 @@ export function ChatView() {
                 console.log('[情感状态]', emotionalState);
               }
             } catch (e) {
-              // 忽略解析错误
+              // 记录解析错误，但不中断流
+              console.warn('[SSE 解析警告] 无法解析数据:', data.substring(0, 100));
+              if (data.length > 100) {
+                console.warn('[SSE 解析警告] 数据长度:', data.length);
+              }
             }
           }
         }
