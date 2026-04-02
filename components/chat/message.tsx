@@ -19,8 +19,20 @@ export function Message({ message, onEdit }: MessageProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
 
+  // 清理消息内容：移除 ###EMOTION### 标记及其后面的 JSON 数据
+  const cleanContent = (content: string): string => {
+    const emotionDelimiterIndex = content.indexOf('###EMOTION###');
+    if (emotionDelimiterIndex !== -1) {
+      // 找到分隔符，只返回之前的内容
+      return content.substring(0, emotionDelimiterIndex).trim();
+    }
+    return content;
+  };
+
+  const displayContent = cleanContent(message.content);
+
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(message.content);
+    await navigator.clipboard.writeText(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -132,12 +144,12 @@ export function Message({ message, onEdit }: MessageProps) {
               </div>
             ) : isUser ? (
               <p className="text-text-primary whitespace-pre-wrap leading-relaxed m-0">
-                {message.content}
+                {displayContent}
               </p>
             ) : (
               <div className="markdown-content text-text-primary">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message.content}
+                  {displayContent}
                 </ReactMarkdown>
               </div>
             )}

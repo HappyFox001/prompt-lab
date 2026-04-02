@@ -64,34 +64,56 @@ export async function POST(req: NextRequest) {
           let fullTextContent = '';  // 只包含文本，不包含分隔符和情感数据
           let emotionBuffer = '';
           let inEmotionSection = false;
+          let textBuffer = '';  // 新增：跨chunk缓冲区，用于检测分隔符
 
           for await (const chunk of result.stream) {
             const text = chunk.text();
             fullResponse += text;
 
-            // 检测情感数据分隔符
-            if (text.includes('###EMOTION###')) {
-              inEmotionSection = true;
-              // 输出分隔符之前的文本
-              const parts = text.split('###EMOTION###');
-              if (parts[0]) {
-                fullTextContent += parts[0];
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: parts[0] })}\n\n`));
-              }
-              if (parts[1]) {
-                emotionBuffer = parts[1];
-              }
-              continue;
-            }
-
             if (inEmotionSection) {
-              // 在情感区域，累积到 emotionBuffer，不输出
+              // 已经进入情感区域，累积到 emotionBuffer，不输出
               emotionBuffer += text;
             } else {
-              // 正常文本流式输出
-              fullTextContent += text;
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`));
+              // 将新文本添加到缓冲区
+              textBuffer += text;
+
+              // 在缓冲区中检测分隔符
+              const delimiterIndex = textBuffer.indexOf('###EMOTION###');
+
+              if (delimiterIndex !== -1) {
+                // 找到分隔符
+                inEmotionSection = true;
+
+                // 分隔符之前的内容是正常文本
+                const contentBeforeDelimiter = textBuffer.substring(0, delimiterIndex);
+                if (contentBeforeDelimiter) {
+                  fullTextContent += contentBeforeDelimiter;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: contentBeforeDelimiter })}\n\n`));
+                }
+
+                // 分隔符之后的内容是情感数据
+                const contentAfterDelimiter = textBuffer.substring(delimiterIndex + 15); // 15 = '###EMOTION###'.length
+                emotionBuffer = contentAfterDelimiter;
+
+                // 清空文本缓冲区
+                textBuffer = '';
+              } else {
+                // 未找到分隔符，检查是否可能跨chunk
+                // 保留最后14个字符（以防分隔符被切分），输出其余部分
+                if (textBuffer.length > 14) {
+                  const safeOutput = textBuffer.substring(0, textBuffer.length - 14);
+                  fullTextContent += safeOutput;
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: safeOutput })}\n\n`));
+                  textBuffer = textBuffer.substring(textBuffer.length - 14);
+                }
+              }
             }
+          }
+
+          // 流结束后，输出剩余的文本缓冲区（如果没有进入情感区域）
+          if (!inEmotionSection && textBuffer) {
+            fullTextContent += textBuffer;
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: textBuffer })}\n\n`));
           }
 
           // 解析情感状态
