@@ -27,28 +27,7 @@ const EMOTION_ICONS: Record<string, { icon: any; color: string; bgColor: string 
   disgust: { icon: Angry, color: 'text-lime-500', bgColor: 'bg-lime-50 dark:bg-lime-950' },
 };
 
-// Intent 中文标签
-const INTENT_LABELS: Record<string, string> = {
-  agree: '同意',
-  think: '思考',
-  refuse: '拒绝',
-  greet: '打招呼',
-  listen: '倾听',
-  question: '提问',
-  explain: '解释',
-  comfort: '安慰',
-};
-
-// Subtext 中文标签
-const SUBTEXT_LABELS: Record<string, string> = {
-  shy: '害羞',
-  confident: '自信',
-  hesitant: '犹豫',
-  playful: '俏皮',
-  serious: '严肃',
-  gentle: '温柔',
-  enthusiastic: '热情',
-};
+// Intent 和 Subtext 直接显示英文原文（已移除中文标签映射）
 
 export function EmotionalStateBadge({ emotionalState, compact = false }: EmotionalStateBadgeProps) {
   const emotionConfig = EMOTION_ICONS[emotionalState.emotion] || EMOTION_ICONS.neutral;
@@ -63,8 +42,8 @@ export function EmotionalStateBadge({ emotionalState, compact = false }: Emotion
           {emotionalState.emotion}
         </span>
         {emotionalState.intent && (
-          <span className="text-xs text-text-secondary">
-            · {INTENT_LABELS[emotionalState.intent] || emotionalState.intent}
+          <span className="text-xs text-text-secondary capitalize">
+            · {emotionalState.intent}
           </span>
         )}
       </div>
@@ -97,15 +76,15 @@ export function EmotionalStateBadge({ emotionalState, compact = false }: Emotion
 
       {/* Intent 标签 */}
       {emotionalState.intent && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300">
-          {INTENT_LABELS[emotionalState.intent] || emotionalState.intent}
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-900/30 text-xs font-medium text-blue-700 dark:text-blue-300 capitalize">
+          {emotionalState.intent}
         </span>
       )}
 
       {/* Subtext 标签 */}
       {emotionalState.subtext && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-xs font-medium text-purple-700 dark:text-purple-300">
-          {SUBTEXT_LABELS[emotionalState.subtext] || emotionalState.subtext}
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-900/30 text-xs font-medium text-purple-700 dark:text-purple-300 capitalize">
+          {emotionalState.subtext}
         </span>
       )}
 
