@@ -638,25 +638,17 @@ export function ChatView() {
         throw new Error('生成的建议为空');
       }
 
-      // 自动对话模式：直接发送，不填充到输入框
-      if (currentConv.autoSuggestEnabled) {
-        console.log('[generateSuggestion] 自动发送建议');
-        setTimeout(() => {
-          handleSend(suggestion);
-        }, 500);
-      } else {
-        // 手动模式：填充到输入框并显示确认对话框
-        console.log('[generateSuggestion] 显示确认对话框');
-        setSuggestedText(suggestion);
-        setIsSuggestionDialogOpen(true);
-      }
+      // 总是显示确认对话框，让用户可以 accept/reject
+      console.log('[generateSuggestion] 显示确认对话框');
+      setSuggestedText(suggestion);
+      setIsSuggestionDialogOpen(true);
     } catch (error) {
       console.error('[generateSuggestion] 错误:', error);
 
-      // 如果是自动对话模式，自动关闭开关
+      // 发生错误时，自动关闭自动生成开关
       const currentConv = conversations.find((c) => c.id === currentConversationId);
       if (currentConv?.autoSuggestEnabled) {
-        console.log('[generateSuggestion] 由于错误，自动关闭自动对话');
+        console.log('[generateSuggestion] 由于错误，自动关闭自动生成');
         setConversations((prevConvs) =>
           prevConvs.map((conv) => {
             if (conv.id === currentConversationId) {
