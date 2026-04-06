@@ -37,7 +37,7 @@ export function ChatInput({
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // 自动调整 textarea 高度
+  // テキストエリアの高さを自動調整
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
@@ -63,13 +63,13 @@ export function ChatInput({
     <div className="bg-surface-primary px-6 py-4">
       <div className="max-w-2xl mx-auto">
         <div className="relative flex items-center gap-2">
-          {/* 左侧功能按钮 */}
+          {/* 左側の機能ボタン */}
           <div className="flex gap-1">
             {onOpenUserPrompt && (
               <button
                 onClick={onOpenUserPrompt}
                 className="h-10 w-10 flex items-center justify-center rounded-lg border border-border-light bg-surface-secondary text-text-tertiary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all"
-                title="用户提示词"
+                title="ユーザープロンプト"
               >
                 <User className="h-4 w-4" strokeWidth={2} />
               </button>
@@ -78,7 +78,7 @@ export function ChatInput({
               <button
                 onClick={onOpenStates}
                 className="h-10 w-10 flex items-center justify-center rounded-lg border border-border-light bg-surface-secondary text-text-tertiary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all"
-                title="数值状态"
+                title="数値ステータス"
               >
                 <Activity className="h-4 w-4" strokeWidth={2} />
               </button>
@@ -87,21 +87,21 @@ export function ChatInput({
               <button
                 onClick={onOpenEvents}
                 className="h-10 w-10 flex items-center justify-center rounded-lg border border-border-light bg-surface-secondary text-text-tertiary hover:text-accent hover:border-accent hover:bg-accent/5 transition-all"
-                title="事件记忆"
+                title="イベントメモリ"
               >
                 <Calendar className="h-4 w-4" strokeWidth={2} />
               </button>
             )}
           </div>
 
-          {/* 输入框容器 */}
+          {/* 入力欄 */}
           <div className="relative flex-1">
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Send a message..."
+              placeholder="メッセージを入力..."
               disabled={disabled || isLoading}
               rows={1}
               className={cn(
@@ -115,13 +115,13 @@ export function ChatInput({
             />
           </div>
 
-          {/* 发送/停止按钮 */}
+          {/* 送信/停止ボタン */}
           {isLoading ? (
             <Button
               variant="submit"
               onClick={onStop}
               className="h-10 w-10 shrink-0 rounded-lg p-0 shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95"
-              aria-label="停止生成"
+              aria-label="生成を停止"
             >
               <Square className="h-4 w-4" fill="currentColor" strokeWidth={2} />
             </Button>
@@ -136,13 +136,13 @@ export function ChatInput({
                   ? 'hover:scale-105 active:scale-95 hover:shadow-lg'
                   : 'opacity-40 cursor-not-allowed'
               )}
-              aria-label="发送消息"
+              aria-label="メッセージを送信"
             >
               <Send className="h-4 w-4" strokeWidth={2} />
             </Button>
           )}
 
-          {/* 自动对话开关 */}
+          {/* 自動対話スイッチ */}
           {hasUserPrompt && onToggleAutoDialog && (
             <button
               onClick={onToggleAutoDialog}
@@ -154,8 +154,8 @@ export function ChatInput({
                   : 'border-border-medium bg-surface-secondary text-text-tertiary hover:border-accent hover:text-accent hover:bg-accent/5',
                 (disabled || isLoading) && 'opacity-50 cursor-not-allowed'
               )}
-              title={autoDialogEnabled ? '停止自动对话' : '开启自动对话'}
-              aria-label={autoDialogEnabled ? '停止自动对话' : '开启自动对话'}
+              title={autoDialogEnabled ? '自動対話を停止' : '自動対話を開始'}
+              aria-label={autoDialogEnabled ? '自動対話を停止' : '自動対話を開始'}
             >
               {autoDialogEnabled ? (
                 <Pause className="h-4 w-4" strokeWidth={2} />

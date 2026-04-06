@@ -71,7 +71,7 @@ export function StateManager({ states, onUpdateStates }: StateManagerProps) {
 
   return (
     <div className="space-y-4">
-      {/* 状态列表 */}
+      {/* ステータスリスト */}
       <div className="space-y-2">
         {states.map((state) => (
           <div key={state.id}>
@@ -93,7 +93,7 @@ export function StateManager({ states, onUpdateStates }: StateManagerProps) {
         ))}
       </div>
 
-      {/* 添加新状态 */}
+      {/* 新規ステータス追加 */}
       {isAdding ? (
         <StateForm
           formData={formData}
@@ -107,14 +107,14 @@ export function StateManager({ states, onUpdateStates }: StateManagerProps) {
           className="w-full flex items-center justify-center gap-2 p-3 rounded-lg border-2 border-dashed border-border-medium hover:border-accent hover:bg-accent/5 transition-all text-text-tertiary hover:text-accent"
         >
           <Plus className="h-4 w-4" />
-          <span className="text-sm font-medium">添加状态</span>
+          <span className="text-sm font-medium">ステータスを追加</span>
         </button>
       )}
     </div>
   );
 }
 
-// 状态卡片
+// ステータスカード
 function StateCard({
   state,
   onEdit,
@@ -144,21 +144,21 @@ function StateCard({
           <button
             onClick={onEdit}
             className="p-1.5 rounded hover:bg-surface-hover transition-colors"
-            title="编辑"
+            title="編集"
           >
             <Edit2 className="h-3.5 w-3.5 text-text-tertiary hover:text-accent" />
           </button>
           <button
             onClick={onDelete}
             className="p-1.5 rounded hover:bg-surface-hover transition-colors"
-            title="删除"
+            title="削除"
           >
             <Trash2 className="h-3.5 w-3.5 text-text-tertiary hover:text-red-500" />
           </button>
         </div>
       </div>
 
-      {/* 进度条 */}
+      {/* プログレスバー */}
       <div className="relative h-2 bg-surface-tertiary rounded-full overflow-hidden">
         <div
           className="absolute inset-y-0 left-0 rounded-full transition-all duration-300"
@@ -172,7 +172,7 @@ function StateCard({
   );
 }
 
-// 状态表单
+// ステータスフォーム
 function StateForm({
   formData,
   setFormData,
@@ -188,7 +188,7 @@ function StateForm({
     <div className="rounded-lg border border-border-medium bg-surface-primary p-4 space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="text-xs text-text-tertiary mb-1 block">名称</label>
+          <label className="text-xs text-text-tertiary mb-1 block">名前</label>
           <input
             type="text"
             value={formData.name || ''}
@@ -198,7 +198,7 @@ function StateForm({
           />
         </div>
         <div>
-          <label className="text-xs text-text-tertiary mb-1 block">颜色</label>
+          <label className="text-xs text-text-tertiary mb-1 block">色</label>
           <input
             type="color"
             value={formData.color || '#10b981'}
@@ -210,7 +210,7 @@ function StateForm({
 
       <div className="grid grid-cols-3 gap-3">
         <div>
-          <label className="text-xs text-text-tertiary mb-1 block">最小值</label>
+          <label className="text-xs text-text-tertiary mb-1 block">最小値</label>
           <input
             type="number"
             value={formData.min ?? 0}
@@ -219,7 +219,7 @@ function StateForm({
           />
         </div>
         <div>
-          <label className="text-xs text-text-tertiary mb-1 block">当前值</label>
+          <label className="text-xs text-text-tertiary mb-1 block">現在値</label>
           <input
             type="number"
             value={formData.value ?? 50}
@@ -228,7 +228,7 @@ function StateForm({
           />
         </div>
         <div>
-          <label className="text-xs text-text-tertiary mb-1 block">最大值</label>
+          <label className="text-xs text-text-tertiary mb-1 block">最大値</label>
           <input
             type="number"
             value={formData.max ?? 100}
@@ -239,12 +239,12 @@ function StateForm({
       </div>
 
       <div>
-        <label className="text-xs text-text-tertiary mb-1 block">描述（可选）</label>
+        <label className="text-xs text-text-tertiary mb-1 block">説明（任意）</label>
         <input
           type="text"
           value={formData.description || ''}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          placeholder="用于记录角色对用户的情感"
+          placeholder="キャラクターのユーザーに対する感情を記録"
           className="w-full px-2 py-1.5 text-sm rounded border border-border-light bg-surface-secondary text-text-primary focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
       </div>
@@ -262,7 +262,7 @@ function StateForm({
           className="flex-1 flex items-center justify-center gap-1 px-3 py-1.5 bg-surface-tertiary text-text-secondary rounded text-sm hover:bg-surface-hover transition-colors"
         >
           <X className="h-3.5 w-3.5" />
-          取消
+          キャンセル
         </button>
       </div>
     </div>

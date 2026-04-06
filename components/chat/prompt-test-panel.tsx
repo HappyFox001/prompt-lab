@@ -113,7 +113,7 @@ export function PromptTestPanel({
   };
 
   const handleDelete = (id: string) => {
-    if (confirm('确定要删除这个提示词片段吗？')) {
+    if (confirm('このプロンプトフラグメントを削除してもよろしいですか？')) {
       const updated = testPrompts.filter((p) => p.id !== id);
       setTestPrompts(updated);
       onTestPromptsChange(updated);
@@ -123,7 +123,7 @@ export function PromptTestPanel({
   const handleAddNew = () => {
     const newPrompt: PromptTestItem = {
       id: `custom-prompt-${Date.now()}`,
-      name: '自定义片段',
+      name: 'カスタムフラグメント',
       content: '',
       enabled: false,
       color: getRandomColor(),
@@ -172,7 +172,7 @@ export function PromptTestPanel({
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
               className="w-full px-2 py-1 text-sm rounded border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none"
-              placeholder="提示词名称"
+              placeholder="プロンプト名"
               autoFocus
             />
             <textarea
@@ -180,7 +180,7 @@ export function PromptTestPanel({
               onChange={(e) => setEditContent(e.target.value)}
               className="w-full px-2 py-1 text-xs rounded border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none resize-none font-mono"
               rows={6}
-              placeholder="提示词内容"
+              placeholder="プロンプト内容"
             />
             <div className="flex gap-2">
               <button
@@ -194,7 +194,7 @@ export function PromptTestPanel({
                 onClick={handleCancelEdit}
                 className="flex-1 px-2 py-1 text-xs rounded border border-border-medium hover:bg-surface-hover transition-colors"
               >
-                取消
+                キャンセル
               </button>
             </div>
           </div>
@@ -221,7 +221,7 @@ export function PromptTestPanel({
                     </span>
                     {prompt.isPreset && (
                       <span className="px-1.5 py-0.5 text-xs rounded bg-accent/10 text-accent shrink-0">
-                        预设
+                        プリセット
                       </span>
                     )}
                     {prompt.category && (
@@ -263,7 +263,7 @@ export function PromptTestPanel({
                           className="px-2 py-1 text-xs rounded hover:bg-surface-hover transition-colors text-text-tertiary hover:text-text-primary flex items-center gap-1"
                         >
                           <Edit2 className="h-3 w-3" />
-                          编辑
+                          編集
                         </button>
                         <button
                           onClick={(e) => {
@@ -273,7 +273,7 @@ export function PromptTestPanel({
                           className="px-2 py-1 text-xs rounded hover:bg-red-500/10 transition-colors text-text-tertiary hover:text-red-500 flex items-center gap-1"
                         >
                           <Trash2 className="h-3 w-3" />
-                          删除
+                          削除
                         </button>
                       </div>
                     )}
@@ -293,7 +293,7 @@ export function PromptTestPanel({
                       : 'bg-surface-hover text-text-secondary hover:bg-surface-primary'
                   )}
                 >
-                  {prompt.enabled ? '✓ 已启用' : '启用'}
+                  {prompt.enabled ? '✓ 有効' : '有効化'}
                 </button>
               </div>
             </div>
@@ -327,7 +327,7 @@ export function PromptTestPanel({
             <div className="flex items-center gap-2">
               {!isCollapsed && (
                 <h3 className="text-base font-semibold text-text-primary">
-                  提示词增强
+                  プロンプト拡張
                 </h3>
               )}
             </div>
@@ -335,7 +335,7 @@ export function PromptTestPanel({
               <button
                 onClick={() => setIsCollapsed(!isCollapsed)}
                 className="p-1.5 rounded-lg hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                title={isCollapsed ? '展开' : '收起'}
+                title={isCollapsed ? '展開' : '折りたたむ'}
               >
                 {isCollapsed ? (
                   <ChevronLeft className="h-4 w-4" />
@@ -355,14 +355,14 @@ export function PromptTestPanel({
                 className="w-full px-3 py-2 rounded-lg border-2 border-dashed border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent flex items-center justify-center gap-2"
               >
                 <Plus className="h-4 w-4" />
-                <span className="text-sm font-medium">添加自定义片段</span>
+                <span className="text-sm font-medium">カスタムフラグメントを追加</span>
               </button>
 
               {/* 提示词列表 */}
               {testPrompts.length === 0 ? (
                 <div className="text-center py-12 text-text-tertiary">
-                  <p className="text-sm">暂无提示词片段</p>
-                  <p className="text-xs mt-2">点击上方按钮添加自定义片段</p>
+                  <p className="text-sm">プロンプトフラグメントがありません</p>
+                  <p className="text-xs mt-2">上のボタンをクリックしてカスタムフラグメントを追加</p>
                 </div>
               ) : (
                 <>
@@ -370,7 +370,7 @@ export function PromptTestPanel({
                   {testPrompts.filter(p => p.isPreset).length > 0 && (
                     <div className="mb-3">
                       <div className="text-xs font-medium text-text-tertiary mb-2 px-1">
-                        预设片段
+                        プリセットフラグメント
                       </div>
                       <div className="space-y-2">
                         {testPrompts.filter(p => p.isPreset).map((prompt) => (
@@ -384,7 +384,7 @@ export function PromptTestPanel({
                   {testPrompts.filter(p => !p.isPreset).length > 0 && (
                     <div>
                       <div className="text-xs font-medium text-text-tertiary mb-2 px-1">
-                        自定义片段
+                        カスタムフラグメント
                       </div>
                       <div className="space-y-2">
                         {testPrompts.filter(p => !p.isPreset).map((prompt) => (

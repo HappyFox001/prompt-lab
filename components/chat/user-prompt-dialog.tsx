@@ -76,7 +76,7 @@ export function UserPromptDialog({
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('确定要删除此用户提示词吗？')) {
+    if (confirm('このユーザープロンプトを削除してもよろしいですか？')) {
       await indexedDB_storage.deleteUserPrompt(id);
       await loadPrompts();
       if (currentPromptId === id) {
@@ -104,7 +104,7 @@ export function UserPromptDialog({
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
           <h2 className="text-xl font-semibold text-text-primary flex items-center gap-2">
             <User className="h-5 w-5 text-accent" />
-            {isEditing ? (editingPrompt.id ? '编辑用户提示词' : '创建用户提示词') : '用户提示词管理'}
+            {isEditing ? (editingPrompt.id ? 'ユーザープロンプトを編集' : 'ユーザープロンプトを作成') : 'ユーザープロンプト管理'}
           </h2>
           <button
             onClick={onClose}
@@ -121,45 +121,45 @@ export function UserPromptDialog({
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-2">
-                  提示词名称 *
+                  プロンプト名 *
                 </label>
                 <input
                   type="text"
                   value={editingPrompt.name || ''}
                   onChange={(e) => setEditingPrompt({ ...editingPrompt, name: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
-                  placeholder="例如：好奇的学生、专业评论家、好友"
+                  placeholder="例：好奇心旺盛な学生、プロの評論家、友達"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-2">
-                  简短描述（可选）
+                  簡単な説明（任意）
                 </label>
                 <input
                   type="text"
                   value={editingPrompt.description || ''}
                   onChange={(e) => setEditingPrompt({ ...editingPrompt, description: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
-                  placeholder="简单说明这个提示词的用途或特点"
+                  placeholder="このプロンプトの用途や特徴を簡単に説明"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-2">
-                  用户角色设定 *
+                  ユーザー役割設定 *
                   <span className="ml-2 text-xs text-text-tertiary">
-                    扮演产品用户，用日语对话
+                    製品ユーザーを演じて、日本語で対話
                   </span>
                 </label>
                 <div className="mb-2 p-3 rounded-lg bg-blue-50 border border-blue-200">
-                  <p className="text-xs text-blue-900 font-medium mb-1">📝 必须包含以下信息：</p>
+                  <p className="text-xs text-blue-900 font-medium mb-1">📝 以下の情報を含める必要があります：</p>
                   <ul className="text-xs text-blue-800 space-y-0.5 ml-4">
-                    <li>• 用户年龄（例如：25岁）</li>
-                    <li>• 用户身份/职业（例如：大学生、上班族）</li>
-                    <li>• 使用的产品（例如：学习管理系统、电商平台）</li>
-                    <li>• 用户性格特征和行为模式</li>
-                    <li>• <strong>重要：所有对话必须使用日语</strong></li>
+                    <li>• ユーザー年齢（例：25歳）</li>
+                    <li>• ユーザー身分/職業（例：大学生、会社員）</li>
+                    <li>• 使用する製品（例：学習管理システム、ECプラットフォーム）</li>
+                    <li>• ユーザーの性格特徴と行動パターン</li>
+                    <li>• <strong>重要：すべての会話は日本語で行う必要があります</strong></li>
                   </ul>
                 </div>
                 <textarea
@@ -203,7 +203,7 @@ export function UserPromptDialog({
                   onClick={handleCancelEdit}
                   className="flex-1"
                 >
-                  取消
+                  キャンセル
                 </Button>
               </div>
             </div>
@@ -216,7 +216,7 @@ export function UserPromptDialog({
                 className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent flex items-center justify-center gap-2"
               >
                 <Plus className="h-5 w-5" />
-                <span className="font-medium">创建新的用户提示词</span>
+                <span className="font-medium">新しいユーザープロンプトを作成</span>
               </button>
 
               {/* 无提示词选项 */}
@@ -230,13 +230,13 @@ export function UserPromptDialog({
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <div className="font-medium">无用户提示词</div>
+                  <div className="font-medium">ユーザープロンプトなし</div>
                   {!currentPromptId && (
                     <Check className="h-5 w-5 text-accent" />
                   )}
                 </div>
                 <div className="text-xs text-text-tertiary mt-1">
-                  不使用自动建议
+                  自動提案を使用しない
                 </div>
               </button>
 
@@ -275,7 +275,7 @@ export function UserPromptDialog({
                       <button
                         onClick={() => handleEdit(prompt)}
                         className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                        title="编辑"
+                        title="編集"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -284,7 +284,7 @@ export function UserPromptDialog({
                       <button
                         onClick={() => handleDelete(prompt.id)}
                         className="p-2 rounded-lg hover:bg-red-500/10 transition-colors text-text-secondary hover:text-red-500"
-                        title="删除"
+                        title="削除"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -295,8 +295,8 @@ export function UserPromptDialog({
 
               {prompts.length === 0 && (
                 <div className="text-center py-12 text-text-tertiary">
-                  <p>还没有创建用户提示词</p>
-                  <p className="text-sm mt-2">点击上方按钮创建第一个提示词</p>
+                  <p>まだユーザープロンプトが作成されていません</p>
+                  <p className="text-sm mt-2">上のボタンをクリックして最初のプロンプトを作成</p>
                 </div>
               )}
             </div>

@@ -34,9 +34,9 @@ export function EventsDialog({
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-6 border-b border-border-light">
           <div>
-            <h2 className="text-xl font-semibold text-text-primary">事件记忆</h2>
+            <h2 className="text-xl font-semibold text-text-primary">イベントメモリ</h2>
             <p className="text-sm text-text-tertiary mt-1">
-              AI会自动提取并记录重要的对话事件
+              AIが重要な会話イベントを自動的に抽出・記録します
             </p>
           </div>
           <button

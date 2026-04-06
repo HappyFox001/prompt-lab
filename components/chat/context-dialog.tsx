@@ -77,7 +77,7 @@ export function ContextDialog({
       <div className="fixed left-1/2 top-1/2 z-50 w-full max-w-6xl max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border-light bg-surface-primary shadow-2xl fade-in flex flex-col">
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-6 border-b border-border-light">
-          <h2 className="text-xl font-semibold text-text-primary">对话上下文</h2>
+          <h2 className="text-xl font-semibold text-text-primary">会話コンテキスト</h2>
           <button
             onClick={onClose}
             className="rounded-lg p-2 text-text-tertiary transition-colors hover:bg-surface-hover hover:text-text-primary"
@@ -99,7 +99,7 @@ export function ContextDialog({
           >
             <div className="flex items-center gap-2">
               <History className="h-4 w-4" />
-              历史记录
+              履歴
             </div>
           </button>
           <button
@@ -113,7 +113,7 @@ export function ContextDialog({
           >
             <div className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
-              设置
+              設定
             </div>
           </button>
         </div>
@@ -151,10 +151,10 @@ export function ContextDialog({
         {activeTab === 'settings' && (
           <div className="flex justify-end gap-3 p-6 border-t border-border-light">
             <Button variant="ghost" onClick={onClose}>
-              取消
+              キャンセル
             </Button>
             <Button variant="submit" onClick={handleSave}>
-              保存设置
+              設定を保存
             </Button>
           </div>
         )}
@@ -188,12 +188,12 @@ function SummarySidebar({
           <div className="flex items-center justify-between p-4 border-b border-border-light">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-accent" />
-              <span className="text-sm font-semibold text-text-primary">对话摘要</span>
+              <span className="text-sm font-semibold text-text-primary">会話要約</span>
             </div>
             <button
               onClick={() => setIsExpanded(false)}
               className="p-1 rounded hover:bg-surface-hover transition-colors"
-              title="收起"
+              title="折りたたむ"
             >
               <ChevronUp className="h-4 w-4 text-text-tertiary" />
             </button>
@@ -204,8 +204,8 @@ function SummarySidebar({
             {memorySummary ? (
               <div className="space-y-3">
                 <div className="text-xs text-text-tertiary">
-                  已摘要至第 {memorySummary.summarizedUpToIndex} 条消息 ·{' '}
-                  {new Date(memorySummary.lastUpdated).toLocaleString('zh-CN', {
+                  第{memorySummary.summarizedUpToIndex}件のメッセージまで要約済み ·{' '}
+                  {new Date(memorySummary.lastUpdated).toLocaleString('ja-JP', {
                     month: 'short',
                     day: 'numeric',
                     hour: '2-digit',
@@ -218,9 +218,9 @@ function SummarySidebar({
               </div>
             ) : (
               <div className="text-sm text-text-tertiary text-center py-8">
-                暂无摘要
+                要約なし
                 <br />
-                每5轮对话后自动生成
+                5往復の会話後に自動生成
               </div>
             )}
           </div>
@@ -233,7 +233,7 @@ function SummarySidebar({
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-accent text-white rounded-lg hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
             >
               <RefreshCw className={cn('h-4 w-4', isUpdating && 'animate-spin')} />
-              {isUpdating ? '生成中...' : '手动更新摘要'}
+              {isUpdating ? '生成中...' : '手動で要約を更新'}
             </button>
           </div>
         </div>
@@ -242,7 +242,7 @@ function SummarySidebar({
           <button
             onClick={() => setIsExpanded(true)}
             className="p-2 rounded hover:bg-surface-hover transition-colors"
-            title="展开摘要"
+            title="要約を展開"
           >
             <ChevronDown className="h-4 w-4 text-text-tertiary rotate-90" />
           </button>
@@ -292,22 +292,22 @@ function HistoryTab({
         <p>
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-accent/10 text-accent font-medium">
             <span className="w-2 h-2 rounded-full bg-accent"></span>
-            绿色边框
+            緑の枠線
           </span>
-          {' '}表示当前发送给AI的消息
+          {' '}現在AIに送信されているメッセージ
         </p>
         <p>
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-surface-tertiary text-text-tertiary font-medium">
-            已摘要
+            要約済み
           </span>
-          {' '}表示已被归纳到摘要中的消息
+          {' '}要約に含まれているメッセージ
         </p>
       </div>
 
       {/* 消息列表 */}
       <div className="space-y-3">
         <h3 className="text-sm font-semibold text-text-primary">
-          完整对话历史（{messages.length}）
+          完全な会話履歴（{messages.length}）
         </h3>
         <div className="space-y-2">
           {messages.map((message, index) => {
@@ -355,12 +355,12 @@ function HistoryTab({
                         </span>
                         {isInContext && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-white font-medium">
-                            当前上下文
+                            現在のコンテキスト
                           </span>
                         )}
                         {isSummarized && !isInContext && (
                           <span className="text-xs px-1.5 py-0.5 rounded bg-surface-tertiary text-text-tertiary font-medium">
-                            已摘要
+                            要約済み
                           </span>
                         )}
                       </div>
@@ -369,7 +369,7 @@ function HistoryTab({
                         <button
                           onClick={() => handleStartEdit(message.id, message.content)}
                           className="opacity-0 group-hover:opacity-100 rounded p-1.5 hover:bg-surface-hover transition-all"
-                          title="编辑消息"
+                          title="メッセージを編集"
                         >
                           <Edit2 className="h-3.5 w-3.5 text-text-tertiary hover:text-accent" />
                         </button>
@@ -397,7 +397,7 @@ function HistoryTab({
                             className="flex items-center gap-1 px-2 py-1 bg-surface-tertiary text-text-secondary rounded text-xs hover:bg-surface-hover transition-colors"
                           >
                             <X className="h-3 w-3" />
-                            取消
+                            キャンセル
                           </button>
                         </div>
                       </div>
@@ -431,10 +431,10 @@ function SettingsTab({
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-sm font-medium text-text-primary">
-            上下文窗口大小
+            コンテキストウィンドウサイズ
           </label>
           <span className="text-sm font-semibold text-accent">
-            {windowSize} 条消息
+            {windowSize}件のメッセージ
           </span>
         </div>
         <input
@@ -447,19 +447,19 @@ function SettingsTab({
           className="w-full"
         />
         <p className="text-xs text-text-tertiary">
-          仅发送最近 {windowSize} 条消息给AI。较旧的对话会自动生成摘要保存。
+          最近の{windowSize}件のメッセージのみAIに送信します。古い会話は自動的に要約されて保存されます。
         </p>
       </div>
 
       {/* 摘要设置说明 */}
       <div className="rounded-lg border border-border-light bg-surface-secondary p-4 space-y-3">
-        <h4 className="text-sm font-semibold text-text-primary">摘要生成规则</h4>
+        <h4 className="text-sm font-semibold text-text-primary">要約生成ルール</h4>
         <div className="space-y-2 text-sm text-text-secondary">
-          <p>• 每 5 轮对话（10 条消息）自动生成一次摘要</p>
-          <p>• 新摘要会整合之前的摘要内容，保持连贯性</p>
-          <p>• 摘要会作为上下文发送给AI，保持长期记忆</p>
-          <p>• 完整对话历史始终保存，可随时查看和编辑</p>
-          <p>• 可以在历史记录页面手动更新摘要</p>
+          <p>• 5往復の会話（10件のメッセージ）ごとに要約を自動生成</p>
+          <p>• 新しい要約は以前の要約内容を統合し、一貫性を保ちます</p>
+          <p>• 要約はコンテキストとしてAIに送信され、長期記憶を保持します</p>
+          <p>• 完全な会話履歴は常に保存され、いつでも閲覧・編集できます</p>
+          <p>• 履歴ページで手動で要約を更新できます</p>
         </div>
       </div>
     </div>

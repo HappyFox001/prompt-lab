@@ -4,16 +4,17 @@ import { Message as MessageType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Sparkles, Copy, Check, Edit2, X, Save, TrendingUp, TrendingDown, Calendar, Star } from 'lucide-react';
+import { User, Sparkles, Copy, Check, Edit2, X, Save, TrendingUp, TrendingDown, Calendar, Star, MessageSquarePlus } from 'lucide-react';
 import { useState } from 'react';
 import { EmotionalStateBadge } from './emotional-state-badge';
 
 interface MessageProps {
   message: MessageType;
   onEdit?: (messageId: string, newContent: string) => void;
+  onFeedback?: (message: MessageType) => void;
 }
 
-export function Message({ message, onEdit }: MessageProps) {
+export function Message({ message, onEdit, onFeedback }: MessageProps) {
   const isUser = message.role === 'user';
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -85,15 +86,26 @@ export function Message({ message, onEdit }: MessageProps) {
           {/* 角色标签和操作按钮 */}
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-text-primary">
-              {isUser ? 'You' : 'AI'}
+              {isUser ? 'ユーザー' : 'AI'}
             </span>
             <div className="flex gap-1">
+              {/* フィードバックボタン */}
+              {onFeedback && message.content && (
+                <button
+                  onClick={() => onFeedback(message)}
+                  className="opacity-0 group-hover:opacity-100 rounded-lg p-2 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-all duration-200"
+                  aria-label="フィードバック"
+                  title="フィードバックを送信"
+                >
+                  <MessageSquarePlus className="h-4 w-4 text-text-tertiary hover:text-amber-600" strokeWidth={2} />
+                </button>
+              )}
               {isUser && onEdit && !isEditing && (
                 <button
                   onClick={handleStartEdit}
                   className="opacity-0 group-hover:opacity-100 rounded-lg p-2 hover:bg-surface-hover transition-all duration-200"
-                  aria-label="编辑消息"
-                  title="编辑消息"
+                  aria-label="編集"
+                  title="メッセージを編集"
                 >
                   <Edit2 className="h-4 w-4 text-text-tertiary hover:text-text-secondary" strokeWidth={2} />
                 </button>
@@ -102,8 +114,8 @@ export function Message({ message, onEdit }: MessageProps) {
                 <button
                   onClick={handleCopy}
                   className="opacity-0 group-hover:opacity-100 rounded-lg p-2 hover:bg-surface-hover transition-all duration-200"
-                  aria-label="复制消息"
-                  title="复制消息"
+                  aria-label="コピー"
+                  title="メッセージをコピー"
                 >
                   {copied ? (
                     <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" strokeWidth={2} />
@@ -138,7 +150,7 @@ export function Message({ message, onEdit }: MessageProps) {
                     className="flex items-center gap-1 px-3 py-1.5 bg-surface-secondary text-text-secondary rounded-lg hover:bg-surface-hover transition-colors text-sm"
                   >
                     <X className="h-3.5 w-3.5" />
-                    取消
+                    キャンセル
                   </button>
                 </div>
               </div>
@@ -155,13 +167,13 @@ export function Message({ message, onEdit }: MessageProps) {
             )}
           </div>
 
-          {/* 状态更新显示 - 只在有有效状态时显示 */}
+          {/* ステータス更新表示 */}
           {!isUser && message.metadata?.stateUpdates && message.metadata.stateUpdates.length > 0 &&
            message.metadata.stateUpdates.some(u => u.stateName && u.stateName !== u.id) && (
             <div className="mt-4 space-y-2">
               <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide flex items-center gap-1.5">
                 <TrendingUp className="h-3 w-3" />
-                状态变化
+                ステータス変化
               </div>
               <div className="flex flex-wrap gap-2">
                 {message.metadata.stateUpdates.map((update, idx) => (
@@ -227,12 +239,12 @@ export function Message({ message, onEdit }: MessageProps) {
             </div>
           )}
 
-          {/* 事件记录显示 */}
+          {/* イベント記録表示 */}
           {!isUser && message.metadata?.event && (
             <div className="mt-4 space-y-2">
               <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide flex items-center gap-1.5">
                 <Calendar className="h-3 w-3" />
-                事件记录
+                イベント記録
               </div>
               <div className="relative overflow-hidden rounded-lg border border-amber-300 dark:border-amber-700 bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-950/30 dark:to-yellow-950/30 p-4 shadow-sm hover:shadow-md transition-all duration-200">
                 {/* 装饰性背景光效 */}

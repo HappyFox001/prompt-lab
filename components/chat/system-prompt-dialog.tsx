@@ -231,7 +231,7 @@ function XMLTreeEditor({
                         }}
                         className="px-2 py-1 rounded border border-border-medium text-xs hover:bg-surface-hover"
                       >
-                        取消
+                        キャンセル
                       </button>
                     </div>
                   </div>
@@ -326,14 +326,14 @@ function XMLPreview({ content }: { content: string }) {
           &lt;{node.tag}&gt;
           {node.children.length > 0 && (
             <span className="text-text-tertiary ml-2">
-              ({node.children.length} 个子标签)
+              ({node.children.length}個のサブタグ)
             </span>
           )}
         </div>
       ))}
       {totalTags > 3 && (
         <div className="text-xs text-text-tertiary">
-          共 {totalTags} 个标签
+          全{totalTags}個のタグ
         </div>
       )}
     </div>
@@ -435,7 +435,7 @@ export function SystemPromptDialog({
         {/* 头部 */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
           <h2 className="text-xl font-semibold text-text-primary">
-            {isEditing ? (editingPrompt.id ? '编辑系统提示词' : '创建系统提示词') : '系统提示词管理'}
+            {isEditing ? (editingPrompt.id ? 'システムプロンプトを編集' : 'システムプロンプトを作成') : 'システムプロンプト管理'}
           </h2>
           <button
             onClick={onClose}
@@ -452,22 +452,22 @@ export function SystemPromptDialog({
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-text-primary mb-2">
-                  提示词名称 *
+                  プロンプト名 *
                 </label>
                 <input
                   type="text"
                   value={editingPrompt.name || ''}
                   onChange={(e) => setEditingPrompt({ ...editingPrompt, name: e.target.value })}
                   className="w-full px-4 py-2.5 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all"
-                  placeholder="例如：幻想世界叙述引擎、专业代码助手"
+                  placeholder="例：ファンタジーワールドナレーションエンジン、プロフェッショナルコードアシスタント"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="block text-sm font-medium text-text-primary">
-                    提示词内容 *
-                    <span className="ml-2 text-xs text-text-tertiary">支持XML格式</span>
+                    プロンプト内容 *
+                    <span className="ml-2 text-xs text-text-tertiary">XML形式対応</span>
                   </label>
                   {hasXMLTags(editingPrompt.content || '') && (
                     <div className="flex gap-1 rounded-lg border border-border-light p-1">
@@ -480,7 +480,7 @@ export function SystemPromptDialog({
                             : 'text-text-secondary hover:text-text-primary'
                         )}
                       >
-                        文本编辑
+                        テキスト編集
                       </button>
                       <button
                         onClick={() => setEditMode('tree')}
@@ -491,7 +491,7 @@ export function SystemPromptDialog({
                             : 'text-text-secondary hover:text-text-primary'
                         )}
                       >
-                        树形编辑
+                        ツリー編集
                       </button>
                     </div>
                   )}
@@ -503,7 +503,7 @@ export function SystemPromptDialog({
                     onChange={(e) => setEditingPrompt({ ...editingPrompt, content: e.target.value })}
                     className="w-full px-4 py-3 rounded-lg border border-border-medium bg-surface-primary text-text-primary focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 transition-all resize-none font-mono text-sm"
                     rows={16}
-                    placeholder="请输入系统提示词内容。支持XML格式的结构化描述..."
+                    placeholder="システムプロンプト内容を入力してください。XML形式の構造化記述に対応..."
                   />
                 ) : (
                   <div className="w-full px-4 py-3 rounded-lg border border-border-medium bg-surface-primary">
@@ -532,7 +532,7 @@ export function SystemPromptDialog({
                   onClick={handleCancelEdit}
                   className="flex-1"
                 >
-                  取消
+                  キャンセル
                 </Button>
               </div>
             </div>
@@ -545,7 +545,7 @@ export function SystemPromptDialog({
                 className="w-full px-4 py-3 rounded-lg border-2 border-dashed border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent flex items-center justify-center gap-2"
               >
                 <Plus className="h-5 w-5" />
-                <span className="font-medium">创建新的系统提示词</span>
+                <span className="font-medium">新しいシステムプロンプトを作成</span>
               </button>
 
               {/* 无提示词选项 */}
@@ -559,7 +559,7 @@ export function SystemPromptDialog({
                 )}
               >
                 <div className="flex items-center justify-between">
-                  <div className="font-medium">无系统提示词</div>
+                  <div className="font-medium">システムプロンプトなし</div>
                   {!currentPromptId && (
                     <Check className="h-5 w-5 text-accent" />
                   )}
@@ -599,7 +599,7 @@ export function SystemPromptDialog({
                       <button
                         onClick={() => handleEdit(prompt)}
                         className="p-2 rounded-lg hover:bg-surface-hover transition-colors text-text-secondary hover:text-text-primary"
-                        title="编辑"
+                        title="編集"
                       >
                         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -608,7 +608,7 @@ export function SystemPromptDialog({
                       <button
                         onClick={() => handleDelete(prompt.id)}
                         className="p-2 rounded-lg hover:bg-red-500/10 transition-colors text-text-secondary hover:text-red-500"
-                        title="删除"
+                        title="削除"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -619,8 +619,8 @@ export function SystemPromptDialog({
 
               {prompts.length === 0 && (
                 <div className="text-center py-12 text-text-tertiary">
-                  <p>还没有创建系统提示词</p>
-                  <p className="text-sm mt-2">点击上方按钮创建第一个提示词</p>
+                  <p>まだシステムプロンプトが作成されていません</p>
+                  <p className="text-sm mt-2">上のボタンをクリックして最初のプロンプトを作成</p>
                 </div>
               )}
             </div>

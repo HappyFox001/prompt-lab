@@ -15,10 +15,12 @@ import { StatesDialog } from './states-dialog';
 import { EventsDialog } from './events-dialog';
 import { PromptTestPanel } from './prompt-test-panel';
 import { indexedDB_storage } from '@/lib/indexeddb';
-import { FileText, History, Tag } from 'lucide-react';
+import { FileText, History, Tag, ClipboardList } from 'lucide-react';
+import Link from 'next/link';
 import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
 import { PRESET_PROMPTS } from '@/lib/preset-prompts';
 import { ExternalEventsDialog } from './external-events-dialog';
+import { FeedbackDialog } from './feedback-dialog';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -39,6 +41,9 @@ export function ChatView() {
   const [testPrompts, setTestPrompts] = useState<PromptTestItem[]>([]);
   const [suggestedText, setSuggestedText] = useState('');
   const [isGeneratingSuggestion, setIsGeneratingSuggestion] = useState(false);
+  // 反馈功能状态
+  const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
+  const [triggerFeedbackMessage, setTriggerFeedbackMessage] = useState<Message | null>(null);
 
   // 初始化：从 IndexedDB 加载或创建新对话
   useEffect(() => {
@@ -879,6 +884,13 @@ export function ChatView() {
     }
   };
 
+  // 处理反馈按钮点击
+  const handleFeedback = (message: Message) => {
+    if (!currentConversation) return;
+    setTriggerFeedbackMessage(message);
+    setIsFeedbackDialogOpen(true);
+  };
+
   const handleToggleAutoDialog = () => {
     if (!currentConversationId || !currentUserPrompt) return;
 
@@ -945,35 +957,44 @@ export function ChatView() {
               </span>
             </div>
             <div className="flex items-center gap-3">
-              {/* 系统提示词按钮 */}
+              {/* システムプロンプトボタン */}
               <button
                 onClick={() => setIsPromptDialogOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
-                title="系统提示词"
+                title="システムプロンプト"
               >
                 <FileText className="h-4 w-4" />
                 <span className="text-sm font-medium">
-                  {currentSystemPrompt?.name || '系统提示词'}
+                  {currentSystemPrompt?.name || 'システムプロンプト'}
                 </span>
               </button>
-              {/* 外部事件按钮 */}
+              {/* 外部イベントボタン */}
               <button
                 onClick={() => setIsExternalEventsDialogOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
-                title="外部事件"
+                title="外部イベント"
               >
                 <Tag className="h-4 w-4" />
-                <span className="text-sm font-medium">外部事件</span>
+                <span className="text-sm font-medium">外部イベント</span>
               </button>
-              {/* 上下文按钮 */}
+              {/* コンテキストボタン */}
               <button
                 onClick={() => setIsContextDialogOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
-                title="查看上下文"
+                title="コンテキストを表示"
               >
                 <History className="h-4 w-4" />
-                <span className="text-sm font-medium">上下文</span>
+                <span className="text-sm font-medium">コンテキスト</span>
               </button>
+              {/* フィードバック履歴リンク */}
+              <Link
+                href="/feedback"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-all text-text-secondary hover:text-amber-600"
+                title="フィードバック履歴"
+              >
+                <ClipboardList className="h-4 w-4" />
+                <span className="text-sm font-medium">フィードバック</span>
+              </Link>
               <ThemeToggle />
             </div>
           </div>
@@ -984,6 +1005,7 @@ export function ChatView() {
           <MessageList
             messages={currentConversation?.messages || []}
             onEditMessage={handleEditMessage}
+            onFeedback={handleFeedback}
           />
         </div>
 
@@ -1090,6 +1112,20 @@ export function ChatView() {
         activePrompts={testPrompts}
         onTestPromptsChange={handleTestPromptsChange}
         onWidthChange={setTestPanelWidth}
+      />
+
+      {/* 反馈对话框 */}
+      <FeedbackDialog
+        isOpen={isFeedbackDialogOpen}
+        onClose={() => {
+          setIsFeedbackDialogOpen(false);
+          setTriggerFeedbackMessage(null);
+        }}
+        triggerMessage={triggerFeedbackMessage}
+        allMessages={currentConversation?.messages || []}
+        conversationId={currentConversationId || ''}
+        systemPrompt={currentSystemPrompt}
+        userPrompt={currentUserPrompt}
       />
     </div>
   );

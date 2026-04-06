@@ -32,7 +32,7 @@ export function Sidebar({
           size="icon"
           onClick={() => setIsCollapsed(false)}
           className="h-10 w-10 hover:bg-surface-hover"
-          aria-label="展开侧边栏"
+          aria-label="サイドバーを展開"
         >
           <PanelLeft className="h-5 w-5" />
         </Button>
@@ -50,14 +50,14 @@ export function Sidebar({
           className="flex-1 justify-start gap-2 font-medium hover:bg-surface-hover transition-colors duration-200"
         >
           <Plus className="h-4 w-4" strokeWidth={2} />
-          <span>New Chat</span>
+          <span>新規チャット</span>
         </Button>
         <Button
           variant="ghost"
           size="icon"
           onClick={() => setIsCollapsed(true)}
           className="h-9 w-9 shrink-0 hover:bg-surface-hover transition-colors duration-200"
-          aria-label="收起侧边栏"
+          aria-label="サイドバーを閉じる"
         >
           <PanelLeftClose className="h-4 w-4" strokeWidth={2} />
         </Button>
@@ -79,7 +79,7 @@ export function Sidebar({
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 text-white text-sm font-semibold shadow-md">
             U
           </div>
-          <span className="flex-1 text-sm font-medium text-text-primary">User</span>
+          <span className="flex-1 text-sm font-medium text-text-primary">ユーザー</span>
         </div>
       </div>
     </div>

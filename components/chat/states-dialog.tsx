@@ -32,9 +32,9 @@ export function StatesDialog({
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-6 border-b border-border-light">
           <div>
-            <h2 className="text-xl font-semibold text-text-primary">数值化状态</h2>
+            <h2 className="text-xl font-semibold text-text-primary">数値ステータス</h2>
             <p className="text-sm text-text-tertiary mt-1">
-              AI会根据对话内容自动更新这些状态值
+              AIが会話内容に基づいてこれらの値を自動更新します
             </p>
           </div>
           <button

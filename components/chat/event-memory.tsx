@@ -11,17 +11,17 @@ interface EventMemoryProps {
 }
 
 export function EventMemory({ events, enabled, onToggle }: EventMemoryProps) {
-  // 按重要性排序
+  // 重要度でソート
   const sortedEvents = [...events].sort((a, b) => b.importance - a.importance);
 
   return (
     <div className="space-y-4">
-      {/* 开关 */}
+      {/* スイッチ */}
       <div className="flex items-center justify-between p-4 rounded-lg border border-border-light bg-surface-secondary">
         <div>
-          <h4 className="text-sm font-semibold text-text-primary mb-1">事件记忆</h4>
+          <h4 className="text-sm font-semibold text-text-primary mb-1">イベントメモリ</h4>
           <p className="text-xs text-text-tertiary">
-            AI会自动记录重要的对话事件
+            AIが重要な会話イベントを自動記録します
           </p>
         </div>
         <button
@@ -41,7 +41,6 @@ export function EventMemory({ events, enabled, onToggle }: EventMemoryProps) {
                 : 'translate-x-0.5 bg-gray-300 dark:bg-gray-400'
             )}
           >
-            {/* 指示器 */}
             <div className={cn(
               'w-2 h-2 rounded-full transition-all duration-300',
               enabled ? 'bg-accent' : 'bg-gray-500'
@@ -50,11 +49,11 @@ export function EventMemory({ events, enabled, onToggle }: EventMemoryProps) {
         </button>
       </div>
 
-      {/* 事件列表 */}
+      {/* イベントリスト */}
       {events.length > 0 && (
         <div className="space-y-2">
           <h4 className="text-xs font-semibold text-text-tertiary uppercase tracking-wide">
-            事件记录 ({events.length})
+            イベント記録 ({events.length})
           </h4>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {sortedEvents.map((event) => (
@@ -66,9 +65,9 @@ export function EventMemory({ events, enabled, onToggle }: EventMemoryProps) {
 
       {events.length === 0 && enabled && (
         <div className="text-center py-8 text-sm text-text-tertiary">
-          暂无事件记录
+          イベント記録がありません
           <br />
-          AI会在对话中自动生成
+          AIが会話中に自動生成します
         </div>
       )}
     </div>
@@ -82,7 +81,7 @@ function EventCard({ event }: { event: MemoryEvent }) {
         <div className="flex items-center gap-1.5 text-xs text-text-tertiary">
           <Calendar className="h-3 w-3" />
           <span>
-            {new Date(event.timestamp).toLocaleString('zh-CN', {
+            {new Date(event.timestamp).toLocaleString('ja-JP', {
               month: 'short',
               day: 'numeric',
               hour: '2-digit',
