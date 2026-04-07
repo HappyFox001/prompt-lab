@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  prompt-lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prompt-lab
+    ports:
+      - "3000:3000"
+    volumes:
+      # 将数据目录挂载到宿主机，持久化数据
+      - ./data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
