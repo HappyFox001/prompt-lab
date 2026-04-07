@@ -1,7 +1,6 @@
-version: '3.8'
-
 services:
   prompt-lab:
+    image: ${COMPOSE_IMAGE_NAME:-prompt-lab}
     build:
       context: .
       dockerfile: Dockerfile
