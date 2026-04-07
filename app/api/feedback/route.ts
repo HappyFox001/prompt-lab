@@ -20,12 +20,12 @@ export async function GET(request: NextRequest) {
     const stats = searchParams.get('stats');
 
     if (stats === 'true') {
-      const reviewerStats = getReviewerStats();
+      const reviewerStats = await getReviewerStats();
       return NextResponse.json({ stats: reviewerStats });
     }
 
     if (id) {
-      const result = getFeedbackById(id);
+      const result = await getFeedbackById(id);
       if (!result) {
         return NextResponse.json({ error: 'Feedback not found' }, { status: 404 });
       }
@@ -33,11 +33,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (reviewer) {
-      const feedbacks = getFeedbacksByReviewer(reviewer);
+      const feedbacks = await getFeedbacksByReviewer(reviewer);
       return NextResponse.json({ feedbacks });
     }
 
-    const feedbacks = getAllFeedbacks();
+    const feedbacks = await getAllFeedbacks();
     return NextResponse.json({ feedbacks });
   } catch (error) {
     console.error('Error fetching feedbacks:', error);
@@ -54,6 +54,7 @@ export async function POST(request: NextRequest) {
       reviewerName,
       description,
       selectedMessages, // 改为选中的消息ID数组
+      tags,
       evaluations,
       systemPrompt,
       userPrompt,
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
       reviewerName: reviewerName.trim(),
       description: description?.trim() || undefined,
       createdAt: now,
+      tags: tags && tags.length > 0 ? JSON.stringify(tags) : undefined,
       // 提示词信息
       systemPromptName: systemPrompt?.name,
       systemPromptContent: systemPrompt?.content,
@@ -111,7 +113,7 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    createFeedback(feedback, messages);
+    await createFeedback(feedback, messages);
 
     return NextResponse.json({
       success: true,
@@ -134,7 +136,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing feedback id' }, { status: 400 });
     }
 
-    deleteFeedback(id);
+    await deleteFeedback(id);
     return NextResponse.json({ success: true, message: 'Feedback deleted successfully' });
   } catch (error) {
     console.error('Error deleting feedback:', error);

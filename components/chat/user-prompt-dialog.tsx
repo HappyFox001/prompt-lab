@@ -6,6 +6,7 @@ import { X, Plus, Trash2, Check, User } from 'lucide-react';
 import { UserPrompt } from '@/lib/types';
 import { indexedDB_storage } from '@/lib/indexeddb';
 import { cn } from '@/lib/utils';
+import { DEFAULT_USER_PROMPTS } from '@/lib/default-prompts';
 
 interface UserPromptDialogProps {
   isOpen: boolean;
@@ -240,7 +241,45 @@ export function UserPromptDialog({
                 </div>
               </button>
 
-              {/* 提示词列表 */}
+              {/* デフォルト提示词列表 */}
+              {DEFAULT_USER_PROMPTS.map((prompt) => (
+                <div
+                  key={prompt.id}
+                  className={cn(
+                    'w-full px-4 py-3 rounded-lg border transition-all',
+                    currentPromptId === prompt.id
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border-medium hover:border-accent/50 hover:bg-surface-hover'
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <button
+                      onClick={() => handleSelect(prompt.id)}
+                      className="flex-1 text-left"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="font-medium text-text-primary">{prompt.name}</div>
+                        {currentPromptId === prompt.id && (
+                          <Check className="h-4 w-4 text-accent" />
+                        )}
+                        <span className="text-xs px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 font-medium">
+                          デフォルト
+                        </span>
+                      </div>
+                      {prompt.description && (
+                        <div className="text-xs text-text-tertiary mb-1">
+                          {prompt.description}
+                        </div>
+                      )}
+                      <div className="text-sm text-text-secondary line-clamp-2">
+                        {prompt.content}
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              {/* ユーザー作成の提示词列表 */}
               {prompts.map((prompt) => (
                 <div
                   key={prompt.id}
@@ -293,7 +332,7 @@ export function UserPromptDialog({
                 </div>
               ))}
 
-              {prompts.length === 0 && (
+              {prompts.length === 0 && DEFAULT_USER_PROMPTS.length === 0 && (
                 <div className="text-center py-12 text-text-tertiary">
                   <p>まだユーザープロンプトが作成されていません</p>
                   <p className="text-sm mt-2">上のボタンをクリックして最初のプロンプトを作成</p>

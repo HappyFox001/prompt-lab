@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
-// ModelSelector 已移除（双层架构使用固定模型）
+// ModelSelector 已移除（双层架構使用固定模型）
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ThemeToggle } from '@/components/ui/theme-toggle';
 import { SystemPromptDialog } from './system-prompt-dialog';
@@ -21,6 +21,7 @@ import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, app
 import { PRESET_PROMPTS } from '@/lib/preset-prompts';
 import { ExternalEventsDialog } from './external-events-dialog';
 import { FeedbackDialog } from './feedback-dialog';
+import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_USER_PROMPTS } from '@/lib/default-prompts';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -88,8 +89,15 @@ export function ChatView() {
     async function loadSystemPrompt() {
       const currentConv = conversations.find((c) => c.id === currentConversationId);
       if (currentConv?.systemPromptId) {
-        const prompt = await indexedDB_storage.getSystemPrompt(currentConv.systemPromptId);
-        setCurrentSystemPrompt(prompt);
+        // 先检查是否是默认提示词
+        const defaultPrompt = DEFAULT_SYSTEM_PROMPTS.find(p => p.id === currentConv.systemPromptId);
+        if (defaultPrompt) {
+          setCurrentSystemPrompt(defaultPrompt as SystemPrompt);
+        } else {
+          // 从 IndexedDB 加载用户创建的提示词
+          const prompt = await indexedDB_storage.getSystemPrompt(currentConv.systemPromptId);
+          setCurrentSystemPrompt(prompt);
+        }
       } else {
         setCurrentSystemPrompt(null);
       }
@@ -102,8 +110,15 @@ export function ChatView() {
     async function loadUserPrompt() {
       const currentConv = conversations.find((c) => c.id === currentConversationId);
       if (currentConv?.userPromptId) {
-        const prompt = await indexedDB_storage.getUserPrompt(currentConv.userPromptId);
-        setCurrentUserPrompt(prompt);
+        // 先检查是否是默认提示词
+        const defaultPrompt = DEFAULT_USER_PROMPTS.find(p => p.id === currentConv.userPromptId);
+        if (defaultPrompt) {
+          setCurrentUserPrompt(defaultPrompt as UserPrompt);
+        } else {
+          // 从 IndexedDB 加载用户创建的提示词
+          const prompt = await indexedDB_storage.getUserPrompt(currentConv.userPromptId);
+          setCurrentUserPrompt(prompt);
+        }
       } else {
         setCurrentUserPrompt(null);
       }

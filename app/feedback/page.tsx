@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ArrowLeft, User, MessageSquare, Calendar, Trash2, ChevronDown, ChevronUp, Search, FileText } from 'lucide-react';
+import { ArrowLeft, User, MessageSquare, Calendar, Trash2, ChevronDown, ChevronUp, Search, FileText, Tag, X } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
+import { FEEDBACK_TAGS } from '@/lib/feedback-constants';
 
 interface Feedback {
   id: string;
@@ -11,6 +12,7 @@ interface Feedback {
   reviewer_name: string;
   description: string | null;
   created_at: string;
+  tags: string | null;
   system_prompt_name: string | null;
   system_prompt_content: string | null;
   user_prompt_name: string | null;
@@ -37,10 +39,16 @@ export default function FeedbackPage() {
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [reviewerStats, setReviewerStats] = useState<ReviewerStat[]>([]);
   const [selectedReviewer, setSelectedReviewer] = useState<string | null>(null);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [expandedFeedback, setExpandedFeedback] = useState<string | null>(null);
   const [feedbackMessages, setFeedbackMessages] = useState<Record<string, FeedbackMessage[]>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // 展开的提示词和消息
+  const [expandedSystemPrompt, setExpandedSystemPrompt] = useState<Set<string>>(new Set());
+  const [expandedUserPrompt, setExpandedUserPrompt] = useState<Set<string>>(new Set());
+  const [expandedMessages, setExpandedMessages] = useState<Set<string>>(new Set());
 
   const loadFeedbacks = async (reviewer?: string) => {
     setIsLoading(true);
@@ -120,12 +128,69 @@ export default function FeedbackPage() {
     return idx !== -1 ? content.substring(0, idx).trim() : content;
   };
 
-  const filteredFeedbacks = feedbacks.filter((f) =>
-    searchTerm
+  const filteredFeedbacks = feedbacks.filter((f) => {
+    // テキスト検索フィルター
+    const matchesSearch = searchTerm
       ? f.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         f.reviewer_name.toLowerCase().includes(searchTerm.toLowerCase())
-      : true
-  );
+      : true;
+
+    // タグフィルター
+    const matchesTag = selectedTag
+      ? f.tags && JSON.parse(f.tags).includes(selectedTag)
+      : true;
+
+    return matchesSearch && matchesTag;
+  });
+
+  const getTagInfo = (tagId: string) => {
+    return FEEDBACK_TAGS.find((t) => t.id === tagId);
+  };
+
+  const parseTags = (tagsJson: string | null): string[] => {
+    if (!tagsJson) return [];
+    try {
+      return JSON.parse(tagsJson);
+    } catch {
+      return [];
+    }
+  };
+
+  const toggleSystemPrompt = (feedbackId: string) => {
+    setExpandedSystemPrompt((prev) => {
+      const next = new Set(prev);
+      if (next.has(feedbackId)) {
+        next.delete(feedbackId);
+      } else {
+        next.add(feedbackId);
+      }
+      return next;
+    });
+  };
+
+  const toggleUserPrompt = (feedbackId: string) => {
+    setExpandedUserPrompt((prev) => {
+      const next = new Set(prev);
+      if (next.has(feedbackId)) {
+        next.delete(feedbackId);
+      } else {
+        next.add(feedbackId);
+      }
+      return next;
+    });
+  };
+
+  const toggleMessage = (messageId: string) => {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
 
   return (
     <div className="min-h-screen bg-surface-primary">
@@ -162,8 +227,9 @@ export default function FeedbackPage() {
 
       <div className="max-w-6xl mx-auto px-6 py-6">
         <div className="flex gap-6">
-          {/* 担当者リスト */}
-          <div className="w-64 flex-shrink-0">
+          {/* サイドバー：担当者とタグ */}
+          <div className="w-64 flex-shrink-0 space-y-4">
+            {/* 担当者フィルター */}
             <div className="sticky top-24 bg-surface-secondary rounded-xl border border-border-medium p-4">
               <h2 className="text-sm font-semibold text-text-secondary mb-3">担当者</h2>
               <div className="space-y-1">
@@ -197,6 +263,59 @@ export default function FeedbackPage() {
                 ))}
               </div>
             </div>
+
+            {/* タグフィルター */}
+            <div className="sticky top-[calc(6rem+theme(spacing.24)+theme(spacing.4))] bg-surface-secondary rounded-xl border border-border-medium p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-text-secondary flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  カテゴリー
+                </h2>
+                {selectedTag && (
+                  <button
+                    onClick={() => setSelectedTag(null)}
+                    className="text-xs text-text-tertiary hover:text-text-primary transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                <button
+                  onClick={() => setSelectedTag(null)}
+                  className={cn(
+                    'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+                    selectedTag === null
+                      ? 'bg-accent/10 text-accent font-medium'
+                      : 'hover:bg-surface-hover text-text-secondary'
+                  )}
+                >
+                  全て
+                </button>
+                {FEEDBACK_TAGS.map((tag) => (
+                  <button
+                    key={tag.id}
+                    onClick={() => setSelectedTag(tag.id)}
+                    className={cn(
+                      'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+                      selectedTag === tag.id
+                        ? 'font-medium'
+                        : 'hover:bg-surface-hover text-text-secondary'
+                    )}
+                    style={
+                      selectedTag === tag.id
+                        ? {
+                            backgroundColor: `${tag.color}20`,
+                            color: tag.color,
+                          }
+                        : {}
+                    }
+                  >
+                    {tag.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* フィードバックリスト */}
@@ -223,7 +342,7 @@ export default function FeedbackPage() {
                         <User className="h-4 w-4 text-blue-600" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium text-text-primary">
                             {feedback.reviewer_name}
                           </span>
@@ -231,6 +350,23 @@ export default function FeedbackPage() {
                             <Calendar className="h-3 w-3" />
                             {new Date(feedback.created_at).toLocaleString('ja-JP')}
                           </span>
+                          {/* タグ表示 */}
+                          {parseTags(feedback.tags).map((tagId) => {
+                            const tagInfo = getTagInfo(tagId);
+                            if (!tagInfo) return null;
+                            return (
+                              <span
+                                key={tagId}
+                                className="text-xs px-2 py-0.5 rounded-full font-medium"
+                                style={{
+                                  backgroundColor: `${tagInfo.color}20`,
+                                  color: tagInfo.color,
+                                }}
+                              >
+                                {tagInfo.label}
+                              </span>
+                            );
+                          })}
                         </div>
                         {feedback.description && (
                           <p className="text-sm text-text-secondary mt-1 line-clamp-1">
@@ -270,36 +406,76 @@ export default function FeedbackPage() {
                           <div className="grid grid-cols-2 gap-3">
                             {feedback.system_prompt_name && (
                               <div className="bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-lg">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded">
-                                    System
-                                  </span>
-                                  <span className="text-sm font-medium text-text-primary">
-                                    {feedback.system_prompt_name}
-                                  </span>
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-emerald-600 bg-emerald-100 dark:bg-emerald-900/50 px-2 py-0.5 rounded">
+                                      System
+                                    </span>
+                                    <span className="text-sm font-medium text-text-primary">
+                                      {feedback.system_prompt_name}
+                                    </span>
+                                  </div>
+                                  {feedback.system_prompt_content && feedback.system_prompt_content.length > 200 && (
+                                    <button
+                                      onClick={() => toggleSystemPrompt(feedback.id)}
+                                      className="p-1 hover:bg-emerald-200 dark:hover:bg-emerald-900 rounded transition-colors"
+                                    >
+                                      {expandedSystemPrompt.has(feedback.id) ? (
+                                        <ChevronUp className="h-4 w-4 text-emerald-600" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4 text-emerald-600" />
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                                 {feedback.system_prompt_content && (
-                                  <p className="text-xs text-text-tertiary line-clamp-3 whitespace-pre-wrap">
-                                    {feedback.system_prompt_content.slice(0, 200)}
-                                    {feedback.system_prompt_content.length > 200 && '...'}
+                                  <p className={cn(
+                                    "text-xs text-text-tertiary whitespace-pre-wrap",
+                                    expandedSystemPrompt.has(feedback.id) ? "" : "line-clamp-3"
+                                  )}>
+                                    {expandedSystemPrompt.has(feedback.id)
+                                      ? feedback.system_prompt_content
+                                      : feedback.system_prompt_content.slice(0, 200) +
+                                        (feedback.system_prompt_content.length > 200 ? '...' : '')
+                                    }
                                   </p>
                                 )}
                               </div>
                             )}
                             {feedback.user_prompt_name && (
                               <div className="bg-blue-50 dark:bg-blue-950/30 p-3 rounded-lg">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className="text-xs font-semibold text-blue-600 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded">
-                                    User
-                                  </span>
-                                  <span className="text-sm font-medium text-text-primary">
-                                    {feedback.user_prompt_name}
-                                  </span>
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-xs font-semibold text-blue-600 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded">
+                                      User
+                                    </span>
+                                    <span className="text-sm font-medium text-text-primary">
+                                      {feedback.user_prompt_name}
+                                    </span>
+                                  </div>
+                                  {feedback.user_prompt_content && feedback.user_prompt_content.length > 200 && (
+                                    <button
+                                      onClick={() => toggleUserPrompt(feedback.id)}
+                                      className="p-1 hover:bg-blue-200 dark:hover:bg-blue-900 rounded transition-colors"
+                                    >
+                                      {expandedUserPrompt.has(feedback.id) ? (
+                                        <ChevronUp className="h-4 w-4 text-blue-600" />
+                                      ) : (
+                                        <ChevronDown className="h-4 w-4 text-blue-600" />
+                                      )}
+                                    </button>
+                                  )}
                                 </div>
                                 {feedback.user_prompt_content && (
-                                  <p className="text-xs text-text-tertiary line-clamp-3 whitespace-pre-wrap">
-                                    {feedback.user_prompt_content.slice(0, 200)}
-                                    {feedback.user_prompt_content.length > 200 && '...'}
+                                  <p className={cn(
+                                    "text-xs text-text-tertiary whitespace-pre-wrap",
+                                    expandedUserPrompt.has(feedback.id) ? "" : "line-clamp-3"
+                                  )}>
+                                    {expandedUserPrompt.has(feedback.id)
+                                      ? feedback.user_prompt_content
+                                      : feedback.user_prompt_content.slice(0, 200) +
+                                        (feedback.user_prompt_content.length > 200 ? '...' : '')
+                                    }
                                   </p>
                                 )}
                               </div>
@@ -313,36 +489,62 @@ export default function FeedbackPage() {
                         <h3 className="text-sm font-semibold text-text-secondary mb-2">
                           選択されたメッセージ
                         </h3>
-                        <div className="space-y-2 max-h-60 overflow-y-auto">
-                          {(feedbackMessages[feedback.id] || []).map((msg) => (
-                            <div
-                              key={msg.id}
-                              className="flex gap-2 p-3 rounded-lg bg-surface-primary"
-                            >
+                        <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                          {(feedbackMessages[feedback.id] || []).map((msg) => {
+                            const content = cleanContent(msg.message_content);
+                            const isLong = content.length > 200;
+                            const isExpanded = expandedMessages.has(msg.id);
+
+                            return (
                               <div
-                                className={cn(
-                                  'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center',
-                                  msg.message_role === 'user'
-                                    ? 'bg-blue-100 dark:bg-blue-900/30'
-                                    : 'bg-emerald-100 dark:bg-emerald-900/30'
-                                )}
+                                key={msg.id}
+                                className="flex gap-2 p-3 rounded-lg bg-surface-primary"
                               >
-                                {msg.message_role === 'user' ? (
-                                  <User className="h-3 w-3 text-blue-600" />
-                                ) : (
-                                  <MessageSquare className="h-3 w-3 text-emerald-600" />
-                                )}
+                                <div
+                                  className={cn(
+                                    'flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center',
+                                    msg.message_role === 'user'
+                                      ? 'bg-blue-100 dark:bg-blue-900/30'
+                                      : 'bg-emerald-100 dark:bg-emerald-900/30'
+                                  )}
+                                >
+                                  {msg.message_role === 'user' ? (
+                                    <User className="h-3 w-3 text-blue-600" />
+                                  ) : (
+                                    <MessageSquare className="h-3 w-3 text-emerald-600" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center justify-between mb-1">
+                                    <span className="text-xs font-medium text-text-secondary">
+                                      {msg.message_role === 'user' ? 'ユーザー' : 'AI'}
+                                    </span>
+                                    {isLong && (
+                                      <button
+                                        onClick={() => toggleMessage(msg.id)}
+                                        className="p-1 hover:bg-surface-hover rounded transition-colors"
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronUp className="h-3 w-3 text-text-tertiary" />
+                                        ) : (
+                                          <ChevronDown className="h-3 w-3 text-text-tertiary" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <p className={cn(
+                                    "text-sm text-text-primary whitespace-pre-wrap",
+                                    !isExpanded && isLong && "line-clamp-3"
+                                  )}>
+                                    {isExpanded || !isLong
+                                      ? content
+                                      : content.slice(0, 200) + '...'
+                                    }
+                                  </p>
+                                </div>
                               </div>
-                              <div className="flex-1 min-w-0">
-                                <span className="text-xs font-medium text-text-secondary">
-                                  {msg.message_role === 'user' ? 'ユーザー' : 'AI'}
-                                </span>
-                                <p className="text-sm text-text-primary">
-                                  {cleanContent(msg.message_content)}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
 

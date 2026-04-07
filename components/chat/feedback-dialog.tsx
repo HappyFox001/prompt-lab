@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Message, SystemPrompt, UserPrompt } from '@/lib/types';
-import { X, MessageSquare, User, ChevronDown, ChevronUp, Check, AlertCircle, CheckSquare, Square, FileText } from 'lucide-react';
+import { X, MessageSquare, User, ChevronDown, ChevronUp, Check, AlertCircle, CheckSquare, Square, FileText, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { FEEDBACK_TAGS } from '@/lib/feedback-constants';
 
 interface FeedbackDialogProps {
   isOpen: boolean;
@@ -32,6 +33,9 @@ export function FeedbackDialog({
 
   // 選択されたメッセージIDのセット
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(new Set());
+
+  // 選択されたタグ
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   // メッセージリストとトリガーメッセージの ref
   const messageListRef = useRef<HTMLDivElement>(null);
@@ -68,6 +72,7 @@ export function FeedbackDialog({
     setReviewerName('');
     setDescription('');
     setSelectedMessageIds(new Set());
+    setSelectedTags(new Set());
     setSuccess(false);
     setError(null);
   };
@@ -79,6 +84,18 @@ export function FeedbackDialog({
         next.delete(messageId);
       } else {
         next.add(messageId);
+      }
+      return next;
+    });
+  };
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) {
+        next.delete(tagId);
+      } else {
+        next.add(tagId);
       }
       return next;
     });
@@ -116,6 +133,7 @@ export function FeedbackDialog({
           reviewerName: reviewerName.trim(),
           description: description.trim(),
           selectedMessages,
+          tags: Array.from(selectedTags),
           evaluations: {},
           systemPrompt: systemPrompt
             ? { name: systemPrompt.name, content: systemPrompt.content }
@@ -324,6 +342,41 @@ export function FeedbackDialog({
                       </p>
                     </div>
                   </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* タグ選択 */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold text-text-secondary flex items-center gap-2">
+              <Tag className="h-4 w-4" />
+              問題カテゴリー（複数選択可）
+            </h3>
+            <div className="flex flex-wrap gap-2">
+              {FEEDBACK_TAGS.map((tag) => {
+                const isSelected = selectedTags.has(tag.id);
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => toggleTag(tag.id)}
+                    className={cn(
+                      'px-3 py-1.5 rounded-full text-sm font-medium transition-all border',
+                      isSelected
+                        ? 'text-white shadow-md'
+                        : 'bg-surface-secondary text-text-secondary hover:bg-surface-hover border-border-medium'
+                    )}
+                    style={
+                      isSelected
+                        ? {
+                            backgroundColor: tag.color,
+                            borderColor: tag.color,
+                          }
+                        : {}
+                    }
+                  >
+                    {tag.label}
+                  </button>
                 );
               })}
             </div>

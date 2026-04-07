@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import sqlite3 from 'sqlite3';
 import path from 'path';
 
 // 数据库文件路径
@@ -11,68 +11,120 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-// 创建数据库连接
-const db = new Database(DB_PATH);
+// 创建数据库连接（使用 sqlite3 异步接口）
+const db = new sqlite3.Database(DB_PATH);
 
-// 启用外键约束
-db.pragma('foreign_keys = ON');
+// 将常用操作 Promise 化
+function run(sql: string, params: any[] = []): Promise<void> {
+  return new Promise((resolve, reject) => {
+    db.run(sql, params, function (err) {
+      if (err) return reject(err);
+      resolve();
+    });
+  });
+}
 
-// 初始化数据库表
-db.exec(`
-  -- 反馈记录表
-  CREATE TABLE IF NOT EXISTS feedbacks (
-    id TEXT PRIMARY KEY,
-    conversation_id TEXT NOT NULL,
-    reviewer_name TEXT NOT NULL,
-    description TEXT,
-    created_at TEXT NOT NULL,
+function all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+  return new Promise((resolve, reject) => {
+    db.all(sql, params, (err, rows) => {
+      if (err) return reject(err);
+      resolve(rows as T[]);
+    });
+  });
+}
 
-    -- 提示词信息
-    system_prompt_name TEXT,
-    system_prompt_content TEXT,
-    user_prompt_name TEXT,
-    user_prompt_content TEXT,
+function get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+  return new Promise((resolve, reject) => {
+    db.get(sql, params, (err, row) => {
+      if (err) return reject(err);
+      resolve(row as T | undefined);
+    });
+  });
+}
 
-    -- 用户扮演端评估维度
-    user_language_naturalness INTEGER,
-    user_behavior_cultural INTEGER,
-    user_emotion_reasonableness INTEGER,
-    user_product_usage INTEGER,
-    user_exploration INTEGER,
-    user_overall INTEGER,
+async function withTransaction<T>(fn: () => Promise<T>): Promise<T> {
+  await run('BEGIN');
+  try {
+    const result = await fn();
+    await run('COMMIT');
+    return result;
+  } catch (err) {
+    try { await run('ROLLBACK'); } catch {}
+    throw err;
+  }
+}
 
-    -- 产品端评估维度
-    product_character_stability INTEGER,
-    product_worldview_consistency INTEGER,
-    product_input_handling INTEGER,
-    product_plot_progression INTEGER,
-    product_long_conversation_stability INTEGER,
-    product_repetition INTEGER,
-    product_exploration_support INTEGER
-  );
+// 从单独的文件导入标签常量（这样客户端组件也可以使用）
+export { FEEDBACK_TAGS } from './feedback-constants';
 
-  -- 反馈关联的消息表
-  CREATE TABLE IF NOT EXISTS feedback_messages (
-    id TEXT PRIMARY KEY,
-    feedback_id TEXT NOT NULL,
-    message_id TEXT NOT NULL,
-    message_role TEXT NOT NULL,
-    message_content TEXT NOT NULL,
-    message_timestamp TEXT,
-    is_selected INTEGER DEFAULT 0,
-    context_position INTEGER NOT NULL,
-    FOREIGN KEY (feedback_id) REFERENCES feedbacks(id) ON DELETE CASCADE
-  );
+// 初始化数据库表（一次性）
+let initialized = false;
+async function initDb() {
+  if (initialized) return;
+  // 启用外键约束
+  await run('PRAGMA foreign_keys = ON');
+  // 初始化表和索引
+  await run(`
+    CREATE TABLE IF NOT EXISTS feedbacks (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      reviewer_name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      tags TEXT,
 
-  -- 评审者索引（用于按评审者分类）
-  CREATE INDEX IF NOT EXISTS idx_feedbacks_reviewer ON feedbacks(reviewer_name);
+      system_prompt_name TEXT,
+      system_prompt_content TEXT,
+      user_prompt_name TEXT,
+      user_prompt_content TEXT,
 
-  -- 对话索引
-  CREATE INDEX IF NOT EXISTS idx_feedbacks_conversation ON feedbacks(conversation_id);
+      user_language_naturalness INTEGER,
+      user_behavior_cultural INTEGER,
+      user_emotion_reasonableness INTEGER,
+      user_product_usage INTEGER,
+      user_exploration INTEGER,
+      user_overall INTEGER,
 
-  -- 创建时间索引
-  CREATE INDEX IF NOT EXISTS idx_feedbacks_created ON feedbacks(created_at);
-`);
+      product_character_stability INTEGER,
+      product_worldview_consistency INTEGER,
+      product_input_handling INTEGER,
+      product_plot_progression INTEGER,
+      product_long_conversation_stability INTEGER,
+      product_repetition INTEGER,
+      product_exploration_support INTEGER
+    )
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS feedback_messages (
+      id TEXT PRIMARY KEY,
+      feedback_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      message_role TEXT NOT NULL,
+      message_content TEXT NOT NULL,
+      message_timestamp TEXT,
+      is_selected INTEGER DEFAULT 0,
+      context_position INTEGER NOT NULL,
+      FOREIGN KEY (feedback_id) REFERENCES feedbacks(id) ON DELETE CASCADE
+    )
+  `);
+
+  await run(`CREATE INDEX IF NOT EXISTS idx_feedbacks_reviewer ON feedbacks(reviewer_name)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_feedbacks_conversation ON feedbacks(conversation_id)`);
+  await run(`CREATE INDEX IF NOT EXISTS idx_feedbacks_created ON feedbacks(created_at)`);
+
+  // 添加tags列（如果不存在）
+  try {
+    await run(`ALTER TABLE feedbacks ADD COLUMN tags TEXT`);
+  } catch (_) {
+    // 列已存在，忽略
+  }
+
+  initialized = true;
+}
+
+// 立即触发一次初始化，但不阻塞导出函数
+void initDb();
 
 // 反馈评估维度的选项值
 export const EVALUATION_OPTIONS = {
@@ -166,6 +218,7 @@ export interface FeedbackData {
   reviewerName: string;
   description?: string;
   createdAt: string;
+  tags?: string; // JSON字符串数组
 
   // 提示词信息
   systemPromptName?: string;
@@ -203,85 +256,107 @@ export interface FeedbackMessageData {
 }
 
 // 数据库操作函数
-export function createFeedback(feedback: FeedbackData, messages: FeedbackMessageData[]) {
-  const insertFeedback = db.prepare(`
-    INSERT INTO feedbacks (
-      id, conversation_id, reviewer_name, description, created_at,
-      system_prompt_name, system_prompt_content, user_prompt_name, user_prompt_content,
-      user_language_naturalness, user_behavior_cultural, user_emotion_reasonableness,
-      user_product_usage, user_exploration, user_overall,
-      product_character_stability, product_worldview_consistency, product_input_handling,
-      product_plot_progression, product_long_conversation_stability, product_repetition,
-      product_exploration_support
-    ) VALUES (
-      @id, @conversationId, @reviewerName, @description, @createdAt,
-      @systemPromptName, @systemPromptContent, @userPromptName, @userPromptContent,
-      @userLanguageNaturalness, @userBehaviorCultural, @userEmotionReasonableness,
-      @userProductUsage, @userExploration, @userOverall,
-      @productCharacterStability, @productWorldviewConsistency, @productInputHandling,
-      @productPlotProgression, @productLongConversationStability, @productRepetition,
-      @productExplorationSupport
-    )
-  `);
+export async function createFeedback(
+  feedback: FeedbackData,
+  messages: FeedbackMessageData[]
+): Promise<string> {
+  await initDb();
 
-  const insertMessage = db.prepare(`
-    INSERT INTO feedback_messages (
-      id, feedback_id, message_id, message_role, message_content,
-      message_timestamp, is_selected, context_position
-    ) VALUES (
-      @id, @feedbackId, @messageId, @messageRole, @messageContent,
-      @messageTimestamp, @isSelected, @contextPosition
-    )
-  `);
+  await withTransaction(async () => {
+    await run(
+      `INSERT INTO feedbacks (
+        id, conversation_id, reviewer_name, description, created_at, tags,
+        system_prompt_name, system_prompt_content, user_prompt_name, user_prompt_content,
+        user_language_naturalness, user_behavior_cultural, user_emotion_reasonableness,
+        user_product_usage, user_exploration, user_overall,
+        product_character_stability, product_worldview_consistency, product_input_handling,
+        product_plot_progression, product_long_conversation_stability, product_repetition,
+        product_exploration_support
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        feedback.id,
+        feedback.conversationId,
+        feedback.reviewerName,
+        feedback.description ?? null,
+        feedback.createdAt,
+        feedback.tags ?? null,
+        feedback.systemPromptName ?? null,
+        feedback.systemPromptContent ?? null,
+        feedback.userPromptName ?? null,
+        feedback.userPromptContent ?? null,
+        feedback.userLanguageNaturalness ?? null,
+        feedback.userBehaviorCultural ?? null,
+        feedback.userEmotionReasonableness ?? null,
+        feedback.userProductUsage ?? null,
+        feedback.userExploration ?? null,
+        feedback.userOverall ?? null,
+        feedback.productCharacterStability ?? null,
+        feedback.productWorldviewConsistency ?? null,
+        feedback.productInputHandling ?? null,
+        feedback.productPlotProgression ?? null,
+        feedback.productLongConversationStability ?? null,
+        feedback.productRepetition ?? null,
+        feedback.productExplorationSupport ?? null,
+      ]
+    );
 
-  const transaction = db.transaction(() => {
-    insertFeedback.run(feedback);
     for (const msg of messages) {
-      insertMessage.run({
-        ...msg,
-        isSelected: msg.isSelected ? 1 : 0,
-      });
+      await run(
+        `INSERT INTO feedback_messages (
+          id, feedback_id, message_id, message_role, message_content,
+          message_timestamp, is_selected, context_position
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          msg.id,
+          msg.feedbackId,
+          msg.messageId,
+          msg.messageRole,
+          msg.messageContent,
+          msg.messageTimestamp ?? null,
+          msg.isSelected ? 1 : 0,
+          msg.contextPosition,
+        ]
+      );
     }
   });
 
-  transaction();
   return feedback.id;
 }
 
-export function getFeedbacksByReviewer(reviewerName: string) {
-  return db.prepare(`
-    SELECT * FROM feedbacks WHERE reviewer_name = ? ORDER BY created_at DESC
-  `).all(reviewerName);
+export async function getFeedbacksByReviewer(reviewerName: string) {
+  await initDb();
+  return all(
+    `SELECT * FROM feedbacks WHERE reviewer_name = ? ORDER BY created_at DESC`,
+    [reviewerName]
+  );
 }
 
-export function getAllFeedbacks() {
-  return db.prepare(`
-    SELECT * FROM feedbacks ORDER BY created_at DESC
-  `).all();
+export async function getAllFeedbacks() {
+  await initDb();
+  return all(`SELECT * FROM feedbacks ORDER BY created_at DESC`);
 }
 
-export function getFeedbackById(id: string) {
-  const feedback = db.prepare(`
-    SELECT * FROM feedbacks WHERE id = ?
-  `).get(id);
-
+export async function getFeedbackById(id: string) {
+  await initDb();
+  const feedback = await get(`SELECT * FROM feedbacks WHERE id = ?`, [id]);
   if (!feedback) return null;
-
-  const messages = db.prepare(`
-    SELECT * FROM feedback_messages WHERE feedback_id = ? ORDER BY context_position
-  `).all(id);
-
+  const messages = await all(
+    `SELECT * FROM feedback_messages WHERE feedback_id = ? ORDER BY context_position`,
+    [id]
+  );
   return { feedback, messages };
 }
 
-export function getReviewerStats() {
-  return db.prepare(`
-    SELECT reviewer_name, COUNT(*) as count FROM feedbacks GROUP BY reviewer_name ORDER BY count DESC
-  `).all();
+export async function getReviewerStats() {
+  await initDb();
+  return all(
+    `SELECT reviewer_name, COUNT(*) as count FROM feedbacks GROUP BY reviewer_name ORDER BY count DESC`
+  );
 }
 
-export function deleteFeedback(id: string) {
-  return db.prepare(`DELETE FROM feedbacks WHERE id = ?`).run(id);
+export async function deleteFeedback(id: string) {
+  await initDb();
+  await run(`DELETE FROM feedbacks WHERE id = ?`, [id]);
 }
 
 export default db;
