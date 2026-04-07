@@ -654,10 +654,10 @@ export function SystemPromptDialog({
                 </div>
               ))}
 
-              {prompts.length === 0 && DEFAULT_SYSTEM_PROMPTS.length === 0 && (
-                <div className="text-center py-12 text-text-tertiary">
-                  <p>まだシステムプロンプトが作成されていません</p>
-                  <p className="text-sm mt-2">上のボタンをクリックして最初のプロンプトを作成</p>
+              {prompts.length === 0 && (
+                <div className="text-center py-8 text-text-tertiary">
+                  <p className="text-sm">カスタムプロンプトはまだありません</p>
+                  <p className="text-xs mt-2">上のボタンをクリックしてカスタムプロンプトを作成</p>
                 </div>
               )}
             </div>
