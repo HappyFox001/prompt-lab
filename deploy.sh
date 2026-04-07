@@ -23,22 +23,14 @@ echo "📦 停止旧容器..."
 $DOCKER_COMPOSE down
 
 # 构建新镜像
-echo "🔨 构建 Docker 镜像..."
-# 尝试使用 docker compose build
-if $DOCKER_COMPOSE build --no-cache 2>&1; then
+echo "🔨 构建 Docker 镜像（使用传统方式）..."
+if docker build --no-cache -t prompt-lab:latest .; then
     echo "✅ 镜像构建成功"
+    # 设置环境变量，让 docker-compose 使用构建好的镜像
+    export COMPOSE_IMAGE_NAME=prompt-lab:latest
 else
-    BUILD_EXIT_CODE=$?
-    echo "⚠️  Docker Compose 构建失败，尝试使用传统构建方式..."
-    # 使用传统的 docker build
-    if docker build --no-cache -t prompt-lab:latest .; then
-        echo "✅ 使用传统方式构建成功"
-        # 需要更新 docker-compose.yml 中的镜像名称
-        export COMPOSE_IMAGE_NAME=prompt-lab:latest
-    else
-        echo "❌ 构建失败，请检查错误日志"
-        exit 1
-    fi
+    echo "❌ 构建失败，请检查错误日志"
+    exit 1
 fi
 
 # 启动容器
