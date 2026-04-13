@@ -65,7 +65,7 @@ export function ChatView() {
         setConversations(updatedConversations);
         setCurrentConversationId(updatedConversations[0].id);
       } else {
-        const newConv = createNewConversation();
+        const newConv = await createNewConversationWithAutoPrompt();
         setConversations([newConv]);
         setCurrentConversationId(newConv.id);
         await indexedDB_storage.saveConversation(newConv);
@@ -815,8 +815,8 @@ export function ChatView() {
     );
   };
 
-  const handleNewConversation = () => {
-    const newConv = createNewConversation();
+  const handleNewConversation = async () => {
+    const newConv = await createNewConversationWithAutoPrompt();
     setConversations((prev) => [newConv, ...prev]);
     setCurrentConversationId(newConv.id);
     indexedDB_storage.saveConversation(newConv);
@@ -829,24 +829,23 @@ export function ChatView() {
   const handleDeleteConversation = async (id: string) => {
     await indexedDB_storage.deleteConversation(id);
 
-    setConversations((prev) => {
-      const remaining = prev.filter((c) => c.id !== id);
+    const remaining = conversations.filter((c) => c.id !== id);
 
-      // 如果删除的是当前对话
-      if (id === currentConversationId) {
-        if (remaining.length > 0) {
-          setCurrentConversationId(remaining[0].id);
-        } else {
-          // 如果没有对话了，创建新对话
-          const newConv = createNewConversation();
-          setCurrentConversationId(newConv.id);
-          indexedDB_storage.saveConversation(newConv);
-          return [newConv];
-        }
+    // 如果删除的是当前对话
+    if (id === currentConversationId) {
+      if (remaining.length > 0) {
+        setCurrentConversationId(remaining[0].id);
+        setConversations(remaining);
+      } else {
+        // 如果没有对话了，创建新对话
+        const newConv = await createNewConversationWithAutoPrompt();
+        setCurrentConversationId(newConv.id);
+        setConversations([newConv]);
+        await indexedDB_storage.saveConversation(newConv);
       }
-
-      return remaining;
-    });
+    } else {
+      setConversations(remaining);
+    }
   };
 
   const handleSelectSystemPrompt = async (promptId: string | undefined) => {
@@ -1161,4 +1160,27 @@ function createNewConversation(): Conversation {
     createdAt: new Date(),
     updatedAt: new Date(),
   };
+}
+
+// 创建新对话，并在只有一个系统提示词时自动选择
+async function createNewConversationWithAutoPrompt(): Promise<Conversation> {
+  const baseConversation = createNewConversation();
+
+  // 获取所有可用的系统提示词
+  const userPrompts = await indexedDB_storage.getSystemPrompts();
+  const totalPrompts = DEFAULT_SYSTEM_PROMPTS.length + userPrompts.length;
+
+  // 如果只有一个系统提示词，自动选择它
+  if (totalPrompts === 1) {
+    const onlyPromptId = DEFAULT_SYSTEM_PROMPTS.length === 1
+      ? DEFAULT_SYSTEM_PROMPTS[0].id
+      : userPrompts[0].id;
+
+    return {
+      ...baseConversation,
+      systemPromptId: onlyPromptId,
+    };
+  }
+
+  return baseConversation;
 }
