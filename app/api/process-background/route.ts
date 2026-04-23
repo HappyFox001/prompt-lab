@@ -23,6 +23,30 @@ interface NumericState {
   min: number;
   max: number;
   description?: string;
+  isDefault?: boolean;
+  enabled?: boolean;
+}
+
+// 好感度等级
+function getAffectionLevel(value: number): { label: string; description: string } {
+  if (value <= -80) return { label: '仇恨', description: '不仅不想和你说话，还想弄死你' };
+  if (value <= -50) return { label: '憎恶', description: '打死不想和你说话，看见当做没看见' };
+  if (value <= -20) return { label: '讨厌', description: '不想和你说话，但是你真要搭话，也会对你爱答不理' };
+  if (value <= 20) return { label: '普通', description: '正常交流' };
+  if (value <= 50) return { label: '友善', description: '想和你说话，愿意分享一些自己非私人的见闻' };
+  if (value <= 80) return { label: '喜欢', description: '想和你说话，愿意分享一些自己私人的想法' };
+  return { label: '爱', description: '无话不说' };
+}
+
+// 信赖度等级
+function getTrustLevel(value: number): { label: string; description: string } {
+  if (value <= -80) return { label: '猜忌', description: '你只要开口就是在骗我，除非亲眼所见否则绝对不信' };
+  if (value <= -50) return { label: '警惕', description: '只要内容不可被客观情况验证，那你说的就不对' };
+  if (value <= -20) return { label: '怀疑', description: '如果无法立即验证，会保持怀疑态度，需要更多证据' };
+  if (value <= 20) return { label: '中立', description: '保持理性判断，不会盲目相信也不会轻易否定' };
+  if (value <= 50) return { label: '信任', description: '愿意相信你说的大部分内容，偶尔会验证' };
+  if (value <= 80) return { label: '信赖', description: '深度信任，几乎不会怀疑你说的话' };
+  return { label: '盲信', description: '无条件相信你说的一切' };
 }
 
 interface MemoryEvent {
@@ -125,11 +149,19 @@ function buildDeepAnalysisPrompt(params: {
     .map(m => `${m.role === 'user' ? 'ユーザー' : 'AI'}：${m.content}`)
     .join('\n\n');
 
-  // 当前状态
+  // 当前状态（对默认状态显示等级）
   const statesContext = numericStates && numericStates.length > 0
-    ? `\n<numeric_states>\n${numericStates.map(s =>
-      `  <state id="${s.id}" name="${s.name}" value="${s.value}" min="${s.min}" max="${s.max}" description="${s.description || ''}" />`
-    ).join('\n')}\n</numeric_states>\n`
+    ? `\n<numeric_states>\n${numericStates.map(s => {
+      let levelInfo = '';
+      if (s.id === 'default-affection') {
+        const level = getAffectionLevel(s.value);
+        levelInfo = ` level="${level.label}" level_description="${level.description}"`;
+      } else if (s.id === 'default-trust') {
+        const level = getTrustLevel(s.value);
+        levelInfo = ` level="${level.label}" level_description="${level.description}"`;
+      }
+      return `  <state id="${s.id}" name="${s.name}" value="${s.value}" min="${s.min}" max="${s.max}"${levelInfo} description="${s.description || ''}" />`;
+    }).join('\n')}\n</numeric_states>\n`
     : '';
 
   // 历史事件（最重要的 10 个）

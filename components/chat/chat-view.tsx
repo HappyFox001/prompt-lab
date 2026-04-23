@@ -22,6 +22,7 @@ import { PRESET_PROMPTS } from '@/lib/preset-prompts';
 import { ExternalEventsDialog } from './external-events-dialog';
 import { FeedbackDialog } from './feedback-dialog';
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_USER_PROMPTS } from '@/lib/default-prompts';
+import { DEFAULT_NUMERIC_STATES } from '@/lib/default-states';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -283,11 +284,14 @@ export function ChatView() {
 
       // 注意：状态信息、事件信息、输出格式说明现在由后端自动处理
 
+      // 过滤只发送启用的状态
+      const enabledStates = (currentConv.numericStates || []).filter(s => s.enabled !== false);
+
       // 调试：打印完整的消息内容
       console.log('=== 发送给LLM的完整Prompt ===');
       console.log('系统提示词数量:', contextMessages.length);
       console.log('最近消息数量:', recentMessages.length);
-      console.log('状态数量:', (currentConv.numericStates || []).length);
+      console.log('状态数量（启用/总计）:', enabledStates.length, '/', (currentConv.numericStates || []).length);
       console.log('事件数量:', (currentConv.memoryEvents || []).length);
       console.log('事件记忆开启:', currentConv.enableEventMemory || false);
       console.log('\n完整消息列表:');
@@ -306,7 +310,7 @@ export function ChatView() {
         body: JSON.stringify({
           messages: messagesToSend,
           conversationId: currentConversationId,
-          numericStates: currentConv.numericStates || [],
+          numericStates: enabledStates,
           systemPrompt: systemPromptToSend || undefined,
         }),
       });
@@ -409,12 +413,15 @@ export function ChatView() {
           const currentConv = conversations.find((c) => c.id === currentConversationId);
           if (!currentConv) return;
 
-          // 检查是否需要后台处理：只在有声明状态或启用事件记忆时才触发
-          const hasStates = (currentConv.numericStates || []).length > 0;
+          // 过滤只处理启用的状态
+          const bgEnabledStates = (currentConv.numericStates || []).filter(s => s.enabled !== false);
+
+          // 检查是否需要后台处理：只在有启用的状态或启用事件记忆时才触发
+          const hasStates = bgEnabledStates.length > 0;
           const hasEventMemory = currentConv.enableEventMemory || false;
 
           if (!hasStates && !hasEventMemory) {
-            console.log('[后台处理] 跳过：未声明状态且未启用事件记忆');
+            console.log('[后台处理] 跳过：无启用状态且未启用事件记忆');
             return;
           }
 
@@ -429,7 +436,7 @@ export function ChatView() {
               conversationId: currentConversationId,
               messages: [...currentConv.messages, { role: 'user', content }, { role: 'assistant', content: fullContent }],
               recentResponse: fullContent,
-              numericStates: currentConv.numericStates || [],
+              numericStates: bgEnabledStates, // 只发送启用的状态
               memoryEvents: currentConv.memoryEvents || [],
               previousSummary: currentConv.memorySummary?.content || '',
             }),
@@ -1152,7 +1159,7 @@ function createNewConversation(): Conversation {
     title: 'New Chat',
     messages: [],
     contextWindowSize: 10,
-    numericStates: [],
+    numericStates: [...DEFAULT_NUMERIC_STATES], // 添加默认状态（好感、信赖）
     memoryEvents: [],
     enableEventMemory: false,
     externalEvents: [],

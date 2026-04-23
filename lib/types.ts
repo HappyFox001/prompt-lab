@@ -61,6 +61,8 @@ export interface NumericState {
   max: number; // 最大值
   description?: string; // 描述
   color?: string; // 显示颜色
+  isDefault?: boolean; // 是否为默认状态（不可编辑/删除）
+  enabled?: boolean; // 是否启用（控制是否注入到 prompt）
 }
 
 export interface MemoryEvent {
