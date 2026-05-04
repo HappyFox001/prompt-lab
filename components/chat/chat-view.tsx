@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent, ProactiveIntentType } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 // ModelSelector 已移除（双层架構使用固定模型）
@@ -15,7 +15,7 @@ import { StatesDialog } from './states-dialog';
 import { EventsDialog } from './events-dialog';
 import { PromptTestPanel } from './prompt-test-panel';
 import { indexedDB_storage } from '@/lib/indexeddb';
-import { FileText, History, Tag, ClipboardList } from 'lucide-react';
+import { FileText, History, Tag, ClipboardList, MessageCircle, Moon } from 'lucide-react';
 import Link from 'next/link';
 import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
 import { PRESET_PROMPTS } from '@/lib/preset-prompts';
@@ -23,6 +23,8 @@ import { ExternalEventsDialog } from './external-events-dialog';
 import { FeedbackDialog } from './feedback-dialog';
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_USER_PROMPTS } from '@/lib/default-prompts';
 import { DEFAULT_NUMERIC_STATES } from '@/lib/default-states';
+import { createManualProactiveIntent, PROACTIVE_INTENTS } from '@/lib/proactive-dialogue';
+import { cn } from '@/lib/utils';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -46,6 +48,8 @@ export function ChatView() {
   // 反馈功能状态
   const [isFeedbackDialogOpen, setIsFeedbackDialogOpen] = useState(false);
   const [triggerFeedbackMessage, setTriggerFeedbackMessage] = useState<Message | null>(null);
+  const [activeProactiveIntentType, setActiveProactiveIntentType] = useState<ProactiveIntentType | null>(null);
+  const [isProactiveMenuOpen, setIsProactiveMenuOpen] = useState(false);
 
   // 初始化：从 IndexedDB 加载或创建新对话
   useEffect(() => {
@@ -141,8 +145,15 @@ export function ChatView() {
     }
   }, [currentConversationId, currentConversation?.testPrompts]);
 
+  useEffect(() => {
+    setActiveProactiveIntentType(null);
+  }, [currentConversationId]);
+
   const handleSend = async (content: string) => {
     if (!currentConversationId) return;
+    const lateNightCareIntent = activeProactiveIntentType === 'late-night-care'
+      ? createManualProactiveIntent('late-night-care')
+      : undefined;
 
     // 添加用户消息
     const userMessage: Message = {
@@ -312,6 +323,7 @@ export function ChatView() {
           conversationId: currentConversationId,
           numericStates: enabledStates,
           systemPrompt: systemPromptToSend || undefined,
+          proactiveIntent: lateNightCareIntent,
         }),
       });
 
@@ -597,6 +609,9 @@ export function ChatView() {
       );
     } finally {
       setIsLoading(false);
+      if (lateNightCareIntent) {
+        setActiveProactiveIntentType(null);
+      }
 
       // 检查是否需要自动生成用户输入建议
       const currentConv = conversations.find((c) => c.id === currentConversationId);
@@ -953,6 +968,232 @@ export function ChatView() {
     }
   };
 
+  const handleProactiveTrigger = async (intentType: ProactiveIntentType) => {
+    if (!currentConversationId || isLoading) return;
+
+    if (intentType === 'late-night-care') {
+      setActiveProactiveIntentType((current) =>
+        current === 'late-night-care' ? null : 'late-night-care'
+      );
+      setIsProactiveMenuOpen(false);
+      return;
+    }
+
+    if (activeProactiveIntentType === intentType) {
+      setActiveProactiveIntentType(null);
+      return;
+    }
+
+    const currentConv = conversations.find((c) => c.id === currentConversationId);
+    if (!currentConv) return;
+
+    setActiveProactiveIntentType(intentType);
+    setIsLoading(true);
+
+    const assistantMessageId = `proactive-${Date.now()}`;
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+    };
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            messages: [...conv.messages, assistantMessage],
+            updatedAt: new Date(),
+          };
+        }
+        return conv;
+      })
+    );
+
+    let fullContent = '';
+
+    try {
+      const contextWindowSize = currentConv.contextWindowSize || 10;
+      const recentMessages = currentConv.messages.slice(-contextWindowSize);
+      const contextMessages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+
+      if (currentSystemPrompt) {
+        contextMessages.push({
+          role: 'system',
+          content: currentSystemPrompt.content,
+        });
+      }
+
+      if (currentConv.memorySummary?.content) {
+        contextMessages.push({
+          role: 'system',
+          content: `以下は以前の会話のサマリーです。文脈を理解するのに役立ちます：\n\n${currentConv.memorySummary.content}`,
+        });
+      }
+
+      const enabledPrompts = testPrompts.filter(p => p.enabled);
+      if (enabledPrompts.length > 0) {
+        const promptEnhancements = enabledPrompts
+          .map(p => p.content)
+          .filter(c => c.trim())
+          .join('\n\n---\n\n');
+
+        if (promptEnhancements) {
+          contextMessages.push({
+            role: 'system',
+            content: `【ロールプレイ強化ガイドライン】\n以下のガイドラインに従って、より自然で一貫性のあるロールプレイを心がけてください。\n\n${promptEnhancements}`,
+          });
+        }
+      }
+
+      const externalEvents = currentConv.externalEvents || [];
+      const recentTextBlob = recentMessages
+        .map((m) => m.content)
+        .join('\n')
+        .toLowerCase();
+
+      const matchedExternalEvents = externalEvents.filter((ev) => {
+        if (!ev.enabled) return false;
+        const keys = (ev.keys || []).map((k) => k.toLowerCase());
+        return keys.some((k) => k && recentTextBlob.includes(k));
+      });
+
+      let externalEventsPrompt = '';
+      if (matchedExternalEvents.length > 0) {
+        const items = matchedExternalEvents
+          .map((ev) => `- イベント名: ${ev.name} → 付加情報: ${ev.content}`)
+          .join('\n');
+        externalEventsPrompt = `\n\n【外部イベント（キーワード一致）】\n次のイベント情報を文脈理解に活用し、応答の一貫性を保ってください：\n${items}\n`;
+      }
+
+      const baseSystemPrompt = currentSystemPrompt?.content || 'あなたは親しみやすいAIアシスタントです。';
+      const systemPromptToSend = `${baseSystemPrompt}${externalEventsPrompt}`;
+      const messagesToSend = [
+        ...contextMessages,
+        ...recentMessages.map((msg) => ({
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+        })),
+      ];
+      const enabledStates = (currentConv.numericStates || []).filter(s => s.enabled !== false);
+
+      console.log('[主动性对话] 手动触发:', intentType, PROACTIVE_INTENTS[intentType].label);
+
+      const response = await fetch('/api/chat-dual', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: messagesToSend,
+          conversationId: currentConversationId,
+          numericStates: enabledStates,
+          systemPrompt: systemPromptToSend || undefined,
+          proactiveIntent: createManualProactiveIntent(intentType),
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'API 调用失败');
+      }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      if (!reader) {
+        throw new Error('无法读取响应流');
+      }
+
+      let emotionalState = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]' || !data.trim()) continue;
+
+            try {
+              const parsed = JSON.parse(data);
+
+              if (parsed.content) {
+                fullContent += parsed.content;
+                setConversations((prevConvs) =>
+                  prevConvs.map((conv) => {
+                    if (conv.id === currentConversationId) {
+                      return {
+                        ...conv,
+                        messages: conv.messages.map((msg) =>
+                          msg.id === assistantMessageId
+                            ? { ...msg, content: fullContent }
+                            : msg
+                        ),
+                        updatedAt: new Date(),
+                      };
+                    }
+                    return conv;
+                  })
+                );
+              }
+
+              if (parsed.emotionalState) {
+                emotionalState = parsed.emotionalState;
+              }
+            } catch (e) {
+              console.warn('[SSE 解析警告] 无法解析主动性对话数据:', data.substring(0, 100));
+            }
+          }
+        }
+      }
+
+      if (emotionalState) {
+        setConversations((prevConvs) =>
+          prevConvs.map((conv) => {
+            if (conv.id === currentConversationId) {
+              return {
+                ...conv,
+                messages: conv.messages.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, emotionalState }
+                    : msg
+                ),
+                updatedAt: new Date(),
+              };
+            }
+            return conv;
+          })
+        );
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[主动性对话] 错误:', error);
+      setConversations((prevConvs) =>
+        prevConvs.map((conv) => {
+          if (conv.id === currentConversationId) {
+            return {
+              ...conv,
+              messages: conv.messages.map((msg) =>
+                msg.id === assistantMessageId
+                  ? { ...msg, content: `❌ 主动性对话错误: ${message}` }
+                  : msg
+              ),
+            };
+          }
+          return conv;
+        })
+      );
+    } finally {
+      setIsLoading(false);
+      setActiveProactiveIntentType(null);
+    }
+  };
+
   return (
     <div className="flex h-screen bg-surface-primary">
       {/* 侧边栏 */}
@@ -978,6 +1219,86 @@ export function ChatView() {
               </span>
             </div>
             <div className="flex items-center gap-3">
+              {/* 主動性対話 */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsProactiveMenuOpen((open) => !open)}
+                  className={cn(
+                    'flex items-center gap-2 px-4 py-2 rounded-lg border transition-all text-text-secondary hover:text-accent',
+                    activeProactiveIntentType
+                      ? 'border-accent bg-accent/5 text-accent'
+                      : 'border-border-medium hover:border-accent hover:bg-surface-hover'
+                  )}
+                  title="主动性对话"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    {activeProactiveIntentType === 'late-night-care'
+                      ? '深夜注入中'
+                      : activeProactiveIntentType === 'silence-break'
+                        ? '沈黙生成中'
+                        : '主动性'}
+                  </span>
+                </button>
+
+                {isProactiveMenuOpen && (
+                  <>
+                    <button
+                      className="fixed inset-0 z-40 cursor-default"
+                      aria-label="主动性メニューを閉じる"
+                      onClick={() => setIsProactiveMenuOpen(false)}
+                    />
+                    <div
+                      className="fixed z-50 w-80 rounded-lg border border-border-medium bg-surface-secondary p-2 shadow-2xl ring-1 ring-black/10"
+                      style={{
+                        top: 56,
+                        right: testPanelWidth + 24,
+                      }}
+                    >
+                      <button
+                        onClick={() => {
+                          setIsProactiveMenuOpen(false);
+                          handleProactiveTrigger('silence-break');
+                        }}
+                        disabled={isLoading}
+                        className={cn(
+                          'w-full rounded-md px-3 py-2 text-left transition-colors',
+                          isLoading
+                            ? 'opacity-50 cursor-not-allowed'
+                            : 'hover:bg-surface-hover'
+                        )}
+                      >
+                        <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                          <MessageCircle className="h-4 w-4 text-accent" />
+                          {PROACTIVE_INTENTS['silence-break'].label}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-text-tertiary">
+                          手動でTimeを満たし、ユーザー入力なしでAIが軽く一言だけ主动発話します。
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => handleProactiveTrigger('late-night-care')}
+                        disabled={isLoading}
+                        className={cn(
+                          'mt-1 w-full rounded-md px-3 py-2 text-left transition-colors',
+                          activeProactiveIntentType === 'late-night-care'
+                            ? 'bg-accent/10'
+                            : 'hover:bg-surface-hover',
+                          isLoading && 'opacity-50 cursor-not-allowed'
+                        )}
+                      >
+                        <div className="flex items-center gap-2 text-sm font-medium text-text-primary">
+                          <Moon className="h-4 w-4 text-accent" />
+                          {PROACTIVE_INTENTS['late-night-care'].label}
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-text-tertiary">
+                          次の通常返信に休息引导の逻辑だけを注入します。単独発話はしません。
+                        </p>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               {/* システムプロンプトボタン */}
               <button
                 onClick={() => setIsPromptDialogOpen(true)}

@@ -1,5 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextRequest } from 'next/server';
+import { buildProactiveSystemInstruction } from '@/lib/proactive-dialogue';
+import type { ProactiveIntent } from '@/lib/types';
 
 /**
  * 双层 LLM 架构
@@ -51,11 +53,12 @@ interface ChatRequest {
   conversationId: string;
   numericStates?: NumericState[];
   systemPrompt?: string;
+  proactiveIntent?: ProactiveIntent;
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, conversationId, numericStates, systemPrompt } = await req.json() as ChatRequest;
+    const { messages, conversationId, numericStates, systemPrompt, proactiveIntent } = await req.json() as ChatRequest;
 
     // 获取 Gemini API Key
     const apiKey = process.env.GEMINI_API_KEY;
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
     });
 
     // 构建第一层提示词（情感识别 + 对话响应）
-    const layer1Prompt = buildLayer1Prompt(messages, numericStates, systemPrompt);
+    const layer1Prompt = buildLayer1Prompt(messages, numericStates, systemPrompt, proactiveIntent);
 
     // 流式响应
     const result = await flashModel.generateContentStream(layer1Prompt);
@@ -223,11 +226,15 @@ export async function POST(req: NextRequest) {
 function buildLayer1Prompt(
   messages: Array<{ role: string; content: string }>,
   numericStates?: NumericState[],
-  systemPrompt?: string
+  systemPrompt?: string,
+  proactiveIntent?: ProactiveIntent
 ): string {
   const conversationHistory = messages
     .slice(-10) // 只保留最近 10 条消息
-    .map(m => `${m.role === 'user' ? 'ユーザー' : 'AI'}：${m.content}`)
+    .map(m => {
+      const label = m.role === 'user' ? 'ユーザー' : m.role === 'system' ? 'システム' : 'AI';
+      return `${label}：${m.content}`;
+    })
     .join('\n\n');
 
   // 构建状态上下文（对默认状态显示等级和行为描述）
@@ -248,8 +255,17 @@ function buildLayer1Prompt(
     : '';
 
   const basePrompt = systemPrompt || 'あなたは親しみやすいAIアシスタントです。';
+  const proactiveInstruction = proactiveIntent
+    ? `\n${buildProactiveSystemInstruction(proactiveIntent)}\n`
+    : '';
+  const finalInstruction = proactiveIntent
+    ? proactiveIntent.deliveryMode === 'standalone'
+      ? 'ユーザーから新しい入力はありません。上記のProactiveIntentに従い、キャラクターとして自然に主动発話してください：'
+      : '最後のユーザーメッセージに自然に返信しつつ、上記のProactiveIntentを話題の流れに溶け込ませてください：'
+    : '最後のユーザーメッセージに、キャラクターとして自然に返信してください：';
 
   return `${basePrompt}
+${proactiveInstruction}
 
 ## 【重要】ロールプレイの基本ルール
 
@@ -288,5 +304,5 @@ ${statesContext}
 
 ${conversationHistory}
 
-最後のユーザーメッセージに、キャラクターとして自然に返信してください：`;
+${finalInstruction}`;
 }

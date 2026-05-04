@@ -72,6 +72,14 @@ export interface MemoryEvent {
   importance: number; // 重要性等级 1-10
 }
 
+export type ProactiveIntentType = 'silence-break' | 'late-night-care';
+
+export interface ProactiveIntent {
+  type: ProactiveIntentType;
+  timeMode: 'normal' | 'manual-test';
+  deliveryMode: 'standalone' | 'in-context';
+}
+
 // 外部事件：基于关键字触发，向系统提示词注入额外上下文
 export interface ExternalEvent {
   id: string;
