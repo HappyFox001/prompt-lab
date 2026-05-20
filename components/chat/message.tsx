@@ -4,7 +4,7 @@ import { Message as MessageType } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { User, Sparkles, Copy, Check, Edit2, X, Save, TrendingUp, TrendingDown, Calendar, Star, MessageSquarePlus } from 'lucide-react';
+import { User, Sparkles, Copy, Check, Edit2, X, Save, TrendingUp, TrendingDown, Calendar, Star, MessageSquarePlus, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { EmotionalStateBadge } from './emotional-state-badge';
 
@@ -236,6 +236,35 @@ export function Message({ message, onEdit, onFeedback }: MessageProps) {
           {!isUser && message.emotionalState && (
             <div className="mt-3">
               <EmotionalStateBadge emotionalState={message.emotionalState} />
+            </div>
+          )}
+
+          {/* Trigger 発火表示 */}
+          {!isUser && message.metadata?.trigger && (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs font-semibold text-text-tertiary uppercase tracking-wide flex items-center gap-1.5">
+                <Zap className="h-3 w-3" />
+                Trigger
+              </div>
+              <div className="rounded-lg border border-cyan-300 dark:border-cyan-700 bg-cyan-50 dark:bg-cyan-950/30 p-4 shadow-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-cyan-800 dark:text-cyan-200">
+                    {message.metadata.trigger.name}
+                  </span>
+                  <span className="rounded bg-cyan-100 dark:bg-cyan-900/60 px-2 py-0.5 text-xs text-cyan-700 dark:text-cyan-300">
+                    BM25 {message.metadata.trigger.score.toFixed(3)}
+                  </span>
+                  <span className="rounded bg-surface-primary px-2 py-0.5 text-xs text-text-tertiary">
+                    {message.metadata.trigger.matchedPerspective === 'role' ? '角色主视角' : '玩家视角'}
+                  </span>
+                </div>
+                <div className="mt-2 text-xs text-text-tertiary">
+                  matched: {message.metadata.trigger.matchedKey}
+                </div>
+                <p className="mt-2 text-sm leading-relaxed text-text-secondary whitespace-pre-wrap">
+                  {message.metadata.trigger.description}
+                </p>
+              </div>
             </div>
           )}
 

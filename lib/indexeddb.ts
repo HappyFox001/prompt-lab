@@ -1,10 +1,12 @@
-import { Conversation, SystemPrompt, UserPrompt } from './types';
+import { Conversation, SystemPrompt, TriggerEvent, UserPrompt } from './types';
+import { mergeDefaultTriggers } from './triggers';
 
 const DB_NAME = 'promptlab';
-const DB_VERSION = 3; // 升级数据库版本以添加 userPrompts 存储
+const DB_VERSION = 4; // 升级数据库版本以添加 triggers 存储
 const STORE_NAME = 'conversations';
 const SYSTEM_PROMPTS_STORE = 'systemPrompts';
 const USER_PROMPTS_STORE = 'userPrompts'; // 新增用户提示词存储
+const TRIGGERS_STORE = 'triggers';
 
 // 打开数据库
 function openDB(): Promise<IDBDatabase> {
@@ -33,6 +35,11 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(USER_PROMPTS_STORE)) {
         const userPromptStore = db.createObjectStore(USER_PROMPTS_STORE, { keyPath: 'id' });
         userPromptStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+      }
+
+      if (!db.objectStoreNames.contains(TRIGGERS_STORE)) {
+        const triggerStore = db.createObjectStore(TRIGGERS_STORE, { keyPath: 'id' });
+        triggerStore.createIndex('updatedAt', 'updatedAt', { unique: false });
       }
     };
   });
@@ -272,6 +279,74 @@ export const indexedDB_storage = {
       });
     } catch (error) {
       console.error('Failed to delete system prompt from IndexedDB:', error);
+    }
+  },
+
+  // ===== Trigger 管理 =====
+
+  async getTriggers(): Promise<TriggerEvent[]> {
+    if (typeof window === 'undefined') return mergeDefaultTriggers([]);
+
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(TRIGGERS_STORE, 'readonly');
+      const store = transaction.objectStore(TRIGGERS_STORE);
+      const index = store.index('updatedAt');
+
+      const saved = await new Promise<TriggerEvent[]>((resolve, reject) => {
+        const request = index.openCursor(null, 'prev');
+        const triggers: TriggerEvent[] = [];
+
+        request.onsuccess = (event) => {
+          const cursor = (event.target as IDBRequest).result;
+          if (cursor) {
+            const trigger = cursor.value;
+            triggers.push({
+              ...trigger,
+              createdAt: trigger.createdAt ? new Date(trigger.createdAt) : undefined,
+              updatedAt: trigger.updatedAt ? new Date(trigger.updatedAt) : undefined,
+            });
+            cursor.continue();
+          } else {
+            resolve(triggers);
+          }
+        };
+
+        request.onerror = () => reject(request.error);
+      });
+
+      const merged = mergeDefaultTriggers(saved);
+      await this.saveTriggers(merged);
+      return merged;
+    } catch (error) {
+      console.error('Failed to load triggers from IndexedDB:', error);
+      return mergeDefaultTriggers([]);
+    }
+  },
+
+  async saveTriggers(triggers: TriggerEvent[]): Promise<void> {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const db = await openDB();
+      const transaction = db.transaction(TRIGGERS_STORE, 'readwrite');
+      const store = transaction.objectStore(TRIGGERS_STORE);
+
+      await new Promise<void>((resolve, reject) => {
+        const clearRequest = store.clear();
+        clearRequest.onsuccess = () => resolve();
+        clearRequest.onerror = () => reject(clearRequest.error);
+      });
+
+      for (const trigger of mergeDefaultTriggers(triggers)) {
+        await new Promise<void>((resolve, reject) => {
+          const request = store.put(trigger);
+          request.onsuccess = () => resolve();
+          request.onerror = () => reject(request.error);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to save triggers to IndexedDB:', error);
     }
   },
 

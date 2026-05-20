@@ -44,6 +44,14 @@ export interface Message {
       importance: number;
       description: string;
     };
+    trigger?: {
+      id: string;
+      name: string;
+      score: number;
+      matchedKey: string;
+      matchedPerspective: 'role' | 'player';
+      description: string;
+    };
   };
 }
 
@@ -91,6 +99,32 @@ export interface ExternalEvent {
   updatedAt?: Date;
 }
 
+export interface TriggerBm25Index {
+  docs: Array<{
+    key: string;
+    perspective: 'role' | 'player';
+    terms: string[];
+    termFreq: Record<string, number>;
+    length: number;
+  }>;
+  idf: Record<string, number>;
+  avgDocLength: number;
+  generatedAt: string;
+}
+
+export interface TriggerEvent {
+  id: string;
+  name: string;
+  roleViewKeys: string[];
+  playerViewKeys: string[];
+  description: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+  bm25?: TriggerBm25Index;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface PromptTestItem {
   id: string;
   name: string; // 提示词片段名称
@@ -111,6 +145,7 @@ export interface Conversation {
   enableEventMemory?: boolean; // 是否启用事件记忆
   testPrompts?: PromptTestItem[]; // 测试提示词片段
   externalEvents?: ExternalEvent[]; // 外部关键字事件（命中后注入到系统提示词）
+  triggers?: TriggerEvent[]; // BM25 触发器（命中后注入到系统提示词）
   createdAt: Date;
   updatedAt: Date;
   systemPromptId?: string; // 关联的系统提示词 ID
