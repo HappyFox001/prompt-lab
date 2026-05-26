@@ -1,6 +1,10 @@
+import http from 'node:http';
+import { Readable } from 'node:stream';
 import { NextRequest } from 'next/server';
 import { buildProactiveSystemInstruction } from '@/lib/proactive-dialogue';
 import type { ProactiveIntent } from '@/lib/types';
+
+export const runtime = 'nodejs';
 
 /**
  * Prompt Lab main LLM bridge.
@@ -31,25 +35,17 @@ interface ChatRequest {
 
 const EMOTION_DELIMITER = '###EMOTION###';
 const TEXT_DELIMITER = '###TEXT###';
+const CHAT_COMPLETIONS_PATH = '/v1/chat/completions';
 
 export async function POST(req: NextRequest) {
   try {
     const { messages, numericStates, systemPrompt, proactiveIntent } =
       (await req.json()) as ChatRequest;
 
-    const sensoryBaseUrl = (
-      process.env.SENSORY_LLM_BASE_URL || 'http://127.0.0.1:7870'
-    ).replace(/\/$/, '');
     const sensoryModel = process.env.SENSORY_LLM_MAIN_MODEL || 'sensory-companion-main';
-    const sensoryToken = process.env.SENSORY_LLM_INTERNAL_TOKEN;
 
-    const response = await fetch(`${sensoryBaseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(sensoryToken ? { Authorization: `Bearer ${sensoryToken}` } : {}),
-      },
-      body: JSON.stringify({
+    const response = await postSensoryChat(
+      JSON.stringify({
         model: sensoryModel,
         messages: normalizeMessages(messages),
         stream: true,
@@ -61,8 +57,8 @@ export async function POST(req: NextRequest) {
           systemPrompt,
           proactiveIntent,
         }),
-      }),
-    });
+      })
+    );
 
     if (!response.ok) {
       const detail = await response.text();
@@ -99,6 +95,77 @@ export async function POST(req: NextRequest) {
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
+}
+
+async function postSensoryChat(body: string): Promise<Response> {
+  const socketPath = process.env.SENSORY_LLM_SOCKET_PATH || process.env.SOCKET_PATH;
+  const sensoryToken = process.env.SENSORY_LLM_INTERNAL_TOKEN;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body).toString(),
+    ...(sensoryToken ? { Authorization: `Bearer ${sensoryToken}` } : {}),
+  };
+
+  if (socketPath) {
+    return postSensoryChatViaSocket({
+      socketPath,
+      body,
+      headers,
+    });
+  }
+
+  const sensoryBaseUrl = (
+    process.env.SENSORY_LLM_BASE_URL || 'http://127.0.0.1:7870'
+  ).replace(/\/$/, '');
+
+  return fetch(`${sensoryBaseUrl}${CHAT_COMPLETIONS_PATH}`, {
+    method: 'POST',
+    headers,
+    body,
+  });
+}
+
+function postSensoryChatViaSocket(params: {
+  socketPath: string;
+  body: string;
+  headers: Record<string, string>;
+}): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    const request = http.request(
+      {
+        socketPath: params.socketPath,
+        path: CHAT_COMPLETIONS_PATH,
+        method: 'POST',
+        headers: params.headers,
+      },
+      (incoming) => {
+        const body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
+        resolve(
+          new Response(body, {
+            status: incoming.statusCode || 500,
+            statusText: incoming.statusMessage,
+            headers: toWebHeaders(incoming.headers),
+          })
+        );
+      }
+    );
+
+    request.on('error', reject);
+    request.write(params.body);
+    request.end();
+  });
+}
+
+function toWebHeaders(headers: http.IncomingHttpHeaders): Headers {
+  const result = new Headers();
+  for (const [key, value] of Object.entries(headers)) {
+    if (Array.isArray(value)) {
+      for (const item of value) result.append(key, item);
+    } else if (value !== undefined) {
+      result.set(key, value);
+    }
+  }
+  return result;
 }
 
 function normalizeMessages(messages: Array<{ role: string; content: string }>) {
