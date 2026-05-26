@@ -2,7 +2,8 @@
 export type EmotionCategory =
   | 'happy' | 'sad' | 'angry' | 'surprised' | 'fear' | 'disgust'
   | 'neutral' | 'excited' | 'anxious' | 'thoughtful' | 'loving'
-  | 'playful' | 'curious' | 'embarrassed' | 'confident';
+  | 'playful' | 'curious' | 'embarrassed' | 'confident'
+  | 'idle' | 'dazed' | 'scared' | 'irritated';
 
 // 情感状态（与 sensory-server 保持一致）
 export interface EmotionalState {
