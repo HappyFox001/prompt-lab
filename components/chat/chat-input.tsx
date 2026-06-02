@@ -2,7 +2,7 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Send, Square, Activity, Calendar, User, Play, Pause } from 'lucide-react';
+import { Send, Square, Activity, Calendar, User, Play, Pause, Route } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
@@ -18,6 +18,8 @@ interface ChatInputProps {
   autoDialogEnabled?: boolean;
   onToggleAutoDialog?: () => void;
   hasUserPrompt?: boolean;
+  eventFlowEnabled?: boolean;
+  onToggleEventFlow?: () => void;
 }
 
 export function ChatInput({
@@ -33,6 +35,8 @@ export function ChatInput({
   autoDialogEnabled = false,
   onToggleAutoDialog,
   hasUserPrompt = false,
+  eventFlowEnabled = false,
+  onToggleEventFlow,
 }: ChatInputProps) {
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -90,6 +94,23 @@ export function ChatInput({
                 title="イベントメモリ"
               >
                 <Calendar className="h-4 w-4" strokeWidth={2} />
+              </button>
+            )}
+            {onToggleEventFlow && (
+              <button
+                onClick={onToggleEventFlow}
+                disabled={disabled || isLoading}
+                className={cn(
+                  'h-10 w-10 flex items-center justify-center rounded-lg border transition-all',
+                  eventFlowEnabled
+                    ? 'border-emerald-500 bg-emerald-500 text-white shadow-md'
+                    : 'border-border-light bg-surface-secondary text-text-tertiary hover:text-emerald-600 hover:border-emerald-500 hover:bg-emerald-500/5',
+                  (disabled || isLoading) && 'opacity-50 cursor-not-allowed'
+                )}
+                title={eventFlowEnabled ? 'イベントフローを停止' : 'イベントフローを開始'}
+                aria-label={eventFlowEnabled ? 'イベントフローを停止' : 'イベントフローを開始'}
+              >
+                <Route className="h-4 w-4" strokeWidth={2} />
               </button>
             )}
           </div>

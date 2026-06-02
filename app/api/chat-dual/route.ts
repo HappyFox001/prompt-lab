@@ -31,15 +31,17 @@ interface ChatRequest {
   numericStates?: NumericState[];
   systemPrompt?: string;
   proactiveIntent?: ProactiveIntent;
+  eventFlowEnabled?: boolean;
 }
 
 const EMOTION_DELIMITER = '###EMOTION###';
 const TEXT_DELIMITER = '###TEXT###';
+const EVENT_DELIMITER = '###EVENT###';
 const CHAT_COMPLETIONS_PATH = '/v1/chat/completions';
 
 export async function POST(req: NextRequest) {
   try {
-    const { messages, numericStates, systemPrompt, proactiveIntent } =
+    const { messages, conversationId, numericStates, systemPrompt, proactiveIntent, eventFlowEnabled } =
       (await req.json()) as ChatRequest;
 
     const sensoryModel = process.env.SENSORY_LLM_MAIN_MODEL || 'sensory-companion-main';
@@ -49,15 +51,18 @@ export async function POST(req: NextRequest) {
         model: sensoryModel,
         messages: normalizeMessages(messages),
         stream: true,
-        store: false,
-        non_store: true,
+        store: !!eventFlowEnabled,
+        non_store: !eventFlowEnabled,
         other_prompt: buildOtherPrompt({
           messages,
           numericStates,
           systemPrompt,
           proactiveIntent,
         }),
-      })
+      }),
+      {
+        conversationId: eventFlowEnabled ? conversationId : undefined,
+      }
     );
 
     if (!response.ok) {
@@ -97,12 +102,16 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function postSensoryChat(body: string): Promise<Response> {
+async function postSensoryChat(
+  body: string,
+  options: { conversationId?: string } = {}
+): Promise<Response> {
   const socketPath = process.env.SENSORY_LLM_SOCKET_PATH || process.env.SOCKET_PATH;
   const sensoryToken = process.env.SENSORY_LLM_INTERNAL_TOKEN;
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Content-Length': Buffer.byteLength(body).toString(),
+    ...(options.conversationId ? { 'X-Sensory-Conversation-ID': options.conversationId } : {}),
     ...(sensoryToken ? { Authorization: `Bearer ${sensoryToken}` } : {}),
   };
 
@@ -247,14 +256,21 @@ function transformSensoryStream(body: ReadableStream<Uint8Array>) {
       let rawText = '';
       let textStartIndex = -1;
       let emittedTextLength = 0;
+      let eventName = 'message';
 
       const emitJson = (payload: unknown) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
       };
 
-      const emitNewText = () => {
+      const emitNewText = (flush = false) => {
         if (textStartIndex < 0) return;
-        const text = rawText.slice(textStartIndex + TEXT_DELIMITER.length);
+        let text = rawText.slice(textStartIndex + TEXT_DELIMITER.length);
+        const eventIndex = text.indexOf(EVENT_DELIMITER);
+        if (eventIndex >= 0) {
+          text = text.slice(0, eventIndex).trimEnd();
+        } else if (!flush && text.length > EVENT_DELIMITER.length) {
+          text = text.slice(0, text.length - EVENT_DELIMITER.length);
+        }
         const delta = text.slice(emittedTextLength);
         if (!delta) return;
         emittedTextLength = text.length;
@@ -267,6 +283,10 @@ function transformSensoryStream(body: ReadableStream<Uint8Array>) {
         try {
           payload = JSON.parse(data);
         } catch {
+          return;
+        }
+        if (eventName === 'event_update') {
+          emitJson({ eventFlow: payload });
           return;
         }
         const content = getDeltaContent(payload);
@@ -289,14 +309,21 @@ function transformSensoryStream(body: ReadableStream<Uint8Array>) {
           sseBuffer = lines.pop() || '';
 
           for (const line of lines) {
+            if (line.startsWith('event:')) {
+              eventName = line.slice(6).trim() || 'message';
+              continue;
+            }
             if (!line.startsWith('data:')) continue;
             processData(line.slice(5).trim());
+            eventName = 'message';
           }
         }
 
         if (sseBuffer.startsWith('data:')) {
           processData(sseBuffer.slice(5).trim());
         }
+
+        emitNewText(true);
 
         if (textStartIndex < 0) {
           const fallbackText = fallbackVisibleText(rawText);

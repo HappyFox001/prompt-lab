@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent, ProactiveIntentType, TriggerEvent } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent, ProactiveIntentType, TriggerEvent, EventFlowState } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 // ModelSelector 已移除（双层架構使用固定模型）
@@ -15,7 +15,7 @@ import { StatesDialog } from './states-dialog';
 import { EventsDialog } from './events-dialog';
 import { PromptTestPanel } from './prompt-test-panel';
 import { indexedDB_storage } from '@/lib/indexeddb';
-import { FileText, History, Tag, ClipboardList, MessageCircle, Moon } from 'lucide-react';
+import { FileText, History, Tag, ClipboardList, MessageCircle, Moon, Route } from 'lucide-react';
 import Link from 'next/link';
 import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
 import { PRESET_PROMPTS } from '@/lib/preset-prompts';
@@ -160,6 +160,54 @@ export function ChatView() {
     setActiveProactiveIntentType(null);
   }, [currentConversationId]);
 
+  const handleToggleEventFlow = () => {
+    if (!currentConversationId) return;
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id !== currentConversationId) return conv;
+        const enabled = !conv.eventFlow?.enabled;
+        return {
+          ...conv,
+          eventFlow: {
+            enabled,
+            currentEvent: enabled ? conv.eventFlow?.currentEvent || null : null,
+            lastCompletion: enabled ? conv.eventFlow?.lastCompletion || null : null,
+            lastUpdatedAt: new Date(),
+          },
+          updatedAt: new Date(),
+        };
+      })
+    );
+  };
+
+  const handleEventFlowUpdate = (payload: {
+    current_event?: EventFlowState['currentEvent'];
+    event_completion?: EventFlowState['lastCompletion'];
+    event_phase?: EventFlowState['lastPhase'];
+  }) => {
+    if (!currentConversationId) return;
+
+    setConversations((prevConvs) =>
+      prevConvs.map((conv) => {
+        if (conv.id !== currentConversationId) return conv;
+        const currentEvent = payload.current_event ?? conv.eventFlow?.currentEvent ?? null;
+        const lastCompletion = payload.event_completion ?? conv.eventFlow?.lastCompletion ?? null;
+        return {
+          ...conv,
+          eventFlow: {
+            enabled: true,
+            currentEvent,
+            lastCompletion,
+            lastPhase: payload.event_phase ?? conv.eventFlow?.lastPhase,
+            lastUpdatedAt: new Date(),
+          },
+          updatedAt: new Date(),
+        };
+      })
+    );
+  };
+
   const handleSend = async (content: string) => {
     if (!currentConversationId) return;
     const lateNightCareIntent = activeProactiveIntentType === 'late-night-care'
@@ -242,6 +290,7 @@ export function ChatView() {
       // 获取当前对话
       const currentConv = conversations.find((c) => c.id === currentConversationId);
       if (!currentConv) return;
+      const eventFlowEnabled = currentConv.eventFlow?.enabled || false;
 
       const allMessages = [...currentConv.messages, userMessage];
       const contextWindowSize = currentConv.contextWindowSize || 10;
@@ -353,6 +402,7 @@ export function ChatView() {
           numericStates: enabledStates,
           systemPrompt: systemPromptToSend || undefined,
           proactiveIntent: lateNightCareIntent,
+          eventFlowEnabled,
         }),
       });
 
@@ -416,6 +466,11 @@ export function ChatView() {
               if (parsed.emotionalState) {
                 emotionalState = parsed.emotionalState;
                 console.log('[情感状态]', emotionalState);
+              }
+
+              if (parsed.eventFlow && eventFlowEnabled) {
+                handleEventFlowUpdate(parsed.eventFlow);
+                console.log('[Event Flow]', parsed.eventFlow);
               }
             } catch (e) {
               // 记录解析错误，但不中断流
@@ -1385,6 +1440,8 @@ export function ChatView() {
           </div>
         </header>
 
+        <EventFlowBanner eventFlow={currentConversation?.eventFlow} />
+
         {/* 消息列表 */}
         <div className="flex-1 overflow-hidden">
           <MessageList
@@ -1407,6 +1464,8 @@ export function ChatView() {
           autoDialogEnabled={currentConversation?.autoSuggestEnabled || false}
           onToggleAutoDialog={handleToggleAutoDialog}
           hasUserPrompt={!!currentConversation?.userPromptId}
+          eventFlowEnabled={currentConversation?.eventFlow?.enabled || false}
+          onToggleEventFlow={handleToggleEventFlow}
         />
       </div>
 
@@ -1523,6 +1582,63 @@ export function ChatView() {
   );
 }
 
+function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
+  if (!eventFlow?.enabled) return null;
+
+  const currentEvent = eventFlow.currentEvent;
+  const completion = eventFlow.lastCompletion;
+  const currentCompleted =
+    currentEvent && completion?.id === currentEvent.id && completion.status === 'finish';
+  const statusLabel = currentCompleted ? '完成' : currentEvent ? '进行中' : '等待事件命中';
+  const statusClass = currentCompleted
+    ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300'
+    : currentEvent
+      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+      : 'bg-surface-secondary text-text-secondary';
+
+  return (
+    <div className="shrink-0 border-b border-border-light bg-emerald-500/5 px-6 py-3">
+      <div className="mx-auto flex max-w-4xl items-start gap-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white">
+          <Route className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-text-primary">Event 进度</span>
+            {currentEvent && (
+              <>
+                <span className="rounded-md bg-emerald-500 px-2 py-0.5 text-xs font-medium text-white">
+                  Event {currentEvent.order}
+                </span>
+                <span className="truncate text-xs text-text-tertiary">{currentEvent.id}</span>
+              </>
+            )}
+            <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', statusClass)}>
+              {statusLabel}
+            </span>
+            {!currentEvent && completion?.status === 'finish' && (
+              <span className="text-xs text-text-tertiary">上次完成: {completion.id}</span>
+            )}
+          </div>
+          {currentEvent ? (
+            <div className="mt-1 space-y-1">
+              <p className="line-clamp-2 text-sm text-text-secondary">{currentEvent.description}</p>
+              <p className="text-xs text-text-tertiary">
+                matched: {currentEvent.matched_key}
+                {completion?.id === currentEvent.id ? ` / result: ${completion.status}` : ''}
+              </p>
+            </div>
+          ) : (
+            <p className="mt-1 text-sm text-text-secondary">
+              当前没有命中的 event。发送包含 event keys 的内容后，这里会显示进入的目标和完成结果。
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 创建新对话
 function createNewConversation(): Conversation {
   return {
@@ -1535,6 +1651,11 @@ function createNewConversation(): Conversation {
     enableEventMemory: false,
     externalEvents: [],
     triggers: [],
+    eventFlow: {
+      enabled: false,
+      currentEvent: null,
+      lastCompletion: null,
+    },
     testPrompts: [...PRESET_PROMPTS], // 添加预设提示词片段（默认禁用）
     createdAt: new Date(),
     updatedAt: new Date(),

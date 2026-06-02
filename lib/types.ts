@@ -126,6 +126,29 @@ export interface TriggerEvent {
   updatedAt?: Date;
 }
 
+export interface EventFlowTarget {
+  id: string;
+  order: number;
+  prerequisite_event_ids: string[];
+  matched_key: string;
+  description: string;
+  goals: string;
+}
+
+export interface EventFlowCompletion {
+  id: string;
+  status: 'finish' | 'unfinished';
+  persisted: boolean;
+}
+
+export interface EventFlowState {
+  enabled: boolean;
+  currentEvent?: EventFlowTarget | null;
+  lastCompletion?: EventFlowCompletion | null;
+  lastPhase?: 'entered' | 'completed';
+  lastUpdatedAt?: Date;
+}
+
 export interface PromptTestItem {
   id: string;
   name: string; // 提示词片段名称
@@ -147,6 +170,7 @@ export interface Conversation {
   testPrompts?: PromptTestItem[]; // 测试提示词片段
   externalEvents?: ExternalEvent[]; // 外部关键字事件（命中后注入到系统提示词）
   triggers?: TriggerEvent[]; // BM25 触发器（命中后注入到系统提示词）
+  eventFlow?: EventFlowState; // sensory-llm-server event 流程测试状态
   createdAt: Date;
   updatedAt: Date;
   systemPromptId?: string; // 关联的系统提示词 ID
