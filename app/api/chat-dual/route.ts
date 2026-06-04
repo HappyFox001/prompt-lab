@@ -1,5 +1,6 @@
-import http from 'node:http';
-import { Readable } from 'node:stream';
+import path from 'node:path';
+import grpc from '@grpc/grpc-js';
+import protoLoader from '@grpc/proto-loader';
 import { NextRequest } from 'next/server';
 import { buildProactiveSystemInstruction } from '@/lib/proactive-dialogue';
 import type { ProactiveIntent } from '@/lib/types';
@@ -37,7 +38,15 @@ interface ChatRequest {
 const EMOTION_DELIMITER = '###EMOTION###';
 const TEXT_DELIMITER = '###TEXT###';
 const EVENT_DELIMITER = '###EVENT###';
-const CHAT_COMPLETIONS_PATH = '/v1/chat/completions';
+const TRIGGER_DELIMITER = '###TRIGGER###';
+const LOCAL_GRPC_NO_PROXY = '127.0.0.1,localhost,::1';
+
+if (!process.env.NO_PROXY) {
+  process.env.NO_PROXY = LOCAL_GRPC_NO_PROXY;
+}
+if (!process.env.no_proxy) {
+  process.env.no_proxy = process.env.NO_PROXY || LOCAL_GRPC_NO_PROXY;
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,44 +55,25 @@ export async function POST(req: NextRequest) {
 
     const sensoryModel = process.env.SENSORY_LLM_MAIN_MODEL || 'sensory-companion-main';
 
-    const response = await postSensoryChat(
-      JSON.stringify({
+    const sensoryBody = {
         model: sensoryModel,
         messages: normalizeMessages(messages),
         stream: true,
         store: !!eventFlowEnabled,
         non_store: !eventFlowEnabled,
+        trigger_bm25_enabled: !!eventFlowEnabled,
         other_prompt: buildOtherPrompt({
           messages,
           numericStates,
           systemPrompt,
           proactiveIntent,
         }),
-      }),
-      {
-        conversationId: eventFlowEnabled ? conversationId : undefined,
-      }
-    );
+    };
 
-    if (!response.ok) {
-      const detail = await response.text();
-      return new Response(
-        JSON.stringify({
-          error: 'sensory-llm-server の呼び出しに失敗しました',
-          details: detail.slice(0, 1000),
-        }),
-        { status: response.status, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!response.body) {
-      return new Response(
-        JSON.stringify({ error: 'sensory-llm-server から応答ストリームが返されませんでした' }),
-        { status: 502, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    return new Response(transformSensoryStream(response.body), {
+    const grpcStream = await postSensoryChatViaGrpc(sensoryBody, {
+      conversationId: eventFlowEnabled ? conversationId : undefined,
+    });
+    return new Response(transformGrpcStream(grpcStream), {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -102,79 +92,76 @@ export async function POST(req: NextRequest) {
   }
 }
 
-async function postSensoryChat(
-  body: string,
+type SensoryChatBody = {
+  model: string;
+  messages: Array<{ role: string; content: string }>;
+  stream: boolean;
+  store: boolean;
+  non_store: boolean;
+  trigger_bm25_enabled: boolean;
+  other_prompt: string;
+};
+
+async function postSensoryChatViaGrpc(
+  body: SensoryChatBody,
   options: { conversationId?: string } = {}
-): Promise<Response> {
-  const socketPath = process.env.SENSORY_LLM_SOCKET_PATH || process.env.SOCKET_PATH;
+): Promise<NodeJS.ReadableStream> {
+  const grpcTarget = process.env.SENSORY_LLM_GRPC_TARGET || '127.0.0.1:7871';
+  const protoPath =
+    process.env.SENSORY_LLM_PROTO_PATH ||
+    path.resolve(process.cwd(), '../../sensory-llm-server/proto/sensory/llm/v1/llm.proto');
+  const packageDefinition = protoLoader.loadSync(protoPath, {
+    keepCase: true,
+    longs: String,
+    enums: String,
+    defaults: true,
+    oneofs: true,
+  });
+  const loaded = grpc.loadPackageDefinition(packageDefinition) as any;
+  const Service = loaded.sensory.llm.v1.SensoryLLMService;
+  const client = new Service(grpcTarget, grpc.credentials.createInsecure(), {
+    'grpc.enable_http_proxy': 0,
+  });
+  await waitForGrpcReady(client, 3000);
+  const metadata = new grpc.Metadata();
   const sensoryToken = process.env.SENSORY_LLM_INTERNAL_TOKEN;
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Content-Length': Buffer.byteLength(body).toString(),
-    ...(options.conversationId ? { 'X-Sensory-Conversation-ID': options.conversationId } : {}),
-    ...(sensoryToken ? { Authorization: `Bearer ${sensoryToken}` } : {}),
+  if (sensoryToken) metadata.set('authorization', `Bearer ${sensoryToken}`);
+
+  const request = {
+    model: body.model,
+    messages: body.messages.map((message) => ({
+      role: message.role,
+      content: [{ text: message.content }],
+    })),
+    generation: {
+      stream: true,
+    },
+    context: {
+      conversation_id: options.conversationId || '',
+      request_id: `prompt-lab-${Date.now()}`,
+      caller: 'prompt-lab',
+    },
+    metadata: {
+      other_prompt: body.other_prompt,
+      non_store: body.non_store ? 'true' : 'false',
+      trigger_bm25_enabled: body.trigger_bm25_enabled ? 'true' : 'false',
+    },
   };
 
-  if (socketPath) {
-    return postSensoryChatViaSocket({
-      socketPath,
-      body,
-      headers,
-    });
-  }
-
-  const sensoryBaseUrl = (
-    process.env.SENSORY_LLM_BASE_URL || 'http://127.0.0.1:7870'
-  ).replace(/\/$/, '');
-
-  return fetch(`${sensoryBaseUrl}${CHAT_COMPLETIONS_PATH}`, {
-    method: 'POST',
-    headers,
-    body,
-  });
+  return client.StreamChat(request, metadata);
 }
 
-function postSensoryChatViaSocket(params: {
-  socketPath: string;
-  body: string;
-  headers: Record<string, string>;
-}): Promise<Response> {
+function waitForGrpcReady(client: grpc.Client, timeoutMs: number): Promise<void> {
   return new Promise((resolve, reject) => {
-    const request = http.request(
-      {
-        socketPath: params.socketPath,
-        path: CHAT_COMPLETIONS_PATH,
-        method: 'POST',
-        headers: params.headers,
-      },
-      (incoming) => {
-        const body = Readable.toWeb(incoming) as ReadableStream<Uint8Array>;
-        resolve(
-          new Response(body, {
-            status: incoming.statusCode || 500,
-            statusText: incoming.statusMessage,
-            headers: toWebHeaders(incoming.headers),
-          })
-        );
+    client.waitForReady(Date.now() + timeoutMs, (error) => {
+      if (error) {
+        client.close();
+        reject(error);
+        return;
       }
-    );
-
-    request.on('error', reject);
-    request.write(params.body);
-    request.end();
+      resolve();
+    });
   });
-}
-
-function toWebHeaders(headers: http.IncomingHttpHeaders): Headers {
-  const result = new Headers();
-  for (const [key, value] of Object.entries(headers)) {
-    if (Array.isArray(value)) {
-      for (const item of value) result.append(key, item);
-    } else if (value !== undefined) {
-      result.set(key, value);
-    }
-  }
-  return result;
 }
 
 function normalizeMessages(messages: Array<{ role: string; content: string }>) {
@@ -245,31 +232,51 @@ function buildStatesPrompt(numericStates?: NumericState[]): string {
   return `## Prompt Lab 一時状態\n以下の状態を参考にして、返信の口調や態度を厳格に調整してください：\n\n${rendered}`;
 }
 
-function transformSensoryStream(body: ReadableStream<Uint8Array>) {
+function transformGrpcStream(call: NodeJS.ReadableStream) {
   const encoder = new TextEncoder();
-  const decoder = new TextDecoder();
+  let rawText = '';
+  let textStartIndex = -1;
+  let emittedTextLength = 0;
+  let closed = false;
 
   return new ReadableStream({
-    async start(controller) {
-      const reader = body.getReader();
-      let sseBuffer = '';
-      let rawText = '';
-      let textStartIndex = -1;
-      let emittedTextLength = 0;
-      let eventName = 'message';
+    start(controller) {
+      const enqueue = (chunk: Uint8Array) => {
+        if (closed) return;
+        try {
+          controller.enqueue(chunk);
+        } catch {
+          closed = true;
+        }
+      };
 
       const emitJson = (payload: unknown) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+        if (closed) return;
+        enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`));
+      };
+
+      const closeStream = () => {
+        if (closed) return;
+        enqueue(encoder.encode('data: [DONE]\n\n'));
+        if (closed) return;
+        try {
+          controller.close();
+        } catch {
+          // The response may already have been closed by Next.js after a client disconnect.
+        } finally {
+          closed = true;
+        }
       };
 
       const emitNewText = (flush = false) => {
+        if (closed) return;
         if (textStartIndex < 0) return;
         let text = rawText.slice(textStartIndex + TEXT_DELIMITER.length);
-        const eventIndex = text.indexOf(EVENT_DELIMITER);
-        if (eventIndex >= 0) {
-          text = text.slice(0, eventIndex).trimEnd();
-        } else if (!flush && text.length > EVENT_DELIMITER.length) {
-          text = text.slice(0, text.length - EVENT_DELIMITER.length);
+        const controlIndex = firstControlMarkerIndex(text);
+        if (controlIndex >= 0) {
+          text = text.slice(0, controlIndex).trimEnd();
+        } else if (!flush && text.length > maxControlDelimiterLength()) {
+          text = text.slice(0, text.length - maxControlDelimiterLength());
         }
         const delta = text.slice(emittedTextLength);
         if (!delta) return;
@@ -277,75 +284,72 @@ function transformSensoryStream(body: ReadableStream<Uint8Array>) {
         emitJson({ content: delta });
       };
 
-      const processData = (data: string) => {
-        if (!data || data === '[DONE]') return;
-        let payload: unknown;
+      call.on('data', (event: any) => {
+        if (closed) return;
+        const debug = event.debug;
+        if (debug?.event === 'event_update' && debug.json_payload) {
+          try {
+            const payload = JSON.parse(debug.json_payload);
+            emitJson({
+              eventFlow: {
+                ...payload,
+                source: 'sensory-llm-server',
+              },
+            });
+          } catch (error) {
+            console.warn('[chat-dual] failed to parse gRPC event_update:', error);
+          }
+          return;
+        }
+
+        const text = event.delta?.text;
+        if (typeof text === 'string' && text) {
+          rawText += text;
+          if (textStartIndex < 0) {
+            textStartIndex = rawText.indexOf(TEXT_DELIMITER);
+          }
+          emitNewText();
+        }
+      });
+
+      call.on('error', (error) => {
+        if (closed) return;
+        closed = true;
         try {
-          payload = JSON.parse(data);
+          controller.error(error);
         } catch {
-          return;
+          // The stream may already be closed by the runtime.
         }
-        if (eventName === 'event_update') {
-          emitJson({ eventFlow: payload });
-          return;
-        }
-        const content = getDeltaContent(payload);
-        if (typeof content !== 'string' || !content) return;
+      });
 
-        rawText += content;
-        if (textStartIndex < 0) {
-          textStartIndex = rawText.indexOf(TEXT_DELIMITER);
-        }
-        emitNewText();
-      };
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          sseBuffer += decoder.decode(value, { stream: true });
-          const lines = sseBuffer.split(/\r?\n/);
-          sseBuffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (line.startsWith('event:')) {
-              eventName = line.slice(6).trim() || 'message';
-              continue;
-            }
-            if (!line.startsWith('data:')) continue;
-            processData(line.slice(5).trim());
-            eventName = 'message';
-          }
-        }
-
-        if (sseBuffer.startsWith('data:')) {
-          processData(sseBuffer.slice(5).trim());
-        }
-
+      call.on('end', () => {
+        if (closed) return;
         emitNewText(true);
-
-        if (textStartIndex < 0) {
-          const fallbackText = fallbackVisibleText(rawText);
-          if (fallbackText) {
-            emitJson({ content: fallbackText });
-          }
-        }
-
         const emotionalState = parseEmotionalState(rawText);
         if (emotionalState) {
           emitJson({ emotionalState });
         }
-
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
-        controller.close();
-      } catch (error) {
-        controller.error(error);
-      } finally {
-        reader.releaseLock();
+        closeStream();
+      });
+    },
+    cancel() {
+      closed = true;
+      if (typeof (call as any).cancel === 'function') {
+        (call as any).cancel();
       }
     },
   });
+}
+
+function firstControlMarkerIndex(text: string): number {
+  const indexes = [EVENT_DELIMITER, TRIGGER_DELIMITER]
+    .map((delimiter) => text.indexOf(delimiter))
+    .filter((index) => index >= 0);
+  return indexes.length > 0 ? Math.min(...indexes) : -1;
+}
+
+function maxControlDelimiterLength(): number {
+  return Math.max(EVENT_DELIMITER.length, TRIGGER_DELIMITER.length);
 }
 
 function getDeltaContent(payload: unknown): string | undefined {

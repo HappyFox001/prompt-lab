@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent, ProactiveIntentType, TriggerEvent, EventFlowState } from '@/lib/types';
+import { Message, Conversation, SystemPrompt, MemorySummary, NumericState, MemoryEvent, PromptTestItem, UserPrompt, ExternalEvent, ProactiveIntentType, EventFlowState } from '@/lib/types';
 import { MessageList } from './message-list';
 import { ChatInput } from './chat-input';
 // ModelSelector 已移除（双层架構使用固定模型）
@@ -20,13 +20,11 @@ import Link from 'next/link';
 import { buildContextPrompt, buildOutputFormatInstruction, parseLLMResponse, applyStateUpdates } from '@/lib/xml-parser';
 import { PRESET_PROMPTS } from '@/lib/preset-prompts';
 import { ExternalEventsDialog } from './external-events-dialog';
-import { TriggersDialog } from './triggers-dialog';
 import { FeedbackDialog } from './feedback-dialog';
 import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_USER_PROMPTS } from '@/lib/default-prompts';
 import { DEFAULT_NUMERIC_STATES } from '@/lib/default-states';
 import { createManualProactiveIntent, PROACTIVE_INTENTS } from '@/lib/proactive-dialogue';
 import { cn } from '@/lib/utils';
-import { buildTriggerPrompt, findBestTriggerMatch, mergeDefaultTriggers } from '@/lib/triggers';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -40,7 +38,6 @@ export function ChatView() {
   const [isStatesDialogOpen, setIsStatesDialogOpen] = useState(false);
   const [isEventsDialogOpen, setIsEventsDialogOpen] = useState(false);
   const [isExternalEventsDialogOpen, setIsExternalEventsDialogOpen] = useState(false);
-  const [isTriggersDialogOpen, setIsTriggersDialogOpen] = useState(false);
   const [isTestPanelOpen, setIsTestPanelOpen] = useState(true);
   const [testPanelWidth, setTestPanelWidth] = useState(280); // 右侧面板宽度
   const [currentSystemPrompt, setCurrentSystemPrompt] = useState<SystemPrompt | null>(null);
@@ -53,20 +50,11 @@ export function ChatView() {
   const [triggerFeedbackMessage, setTriggerFeedbackMessage] = useState<Message | null>(null);
   const [activeProactiveIntentType, setActiveProactiveIntentType] = useState<ProactiveIntentType | null>(null);
   const [isProactiveMenuOpen, setIsProactiveMenuOpen] = useState(false);
-  const [triggers, setTriggers] = useState<TriggerEvent[]>([]);
 
   // 初始化：从 IndexedDB 加载或创建新对话
   useEffect(() => {
     async function loadData() {
       // 双层架构：不再需要加载模型配置
-      const savedTriggers = await indexedDB_storage.getTriggers();
-      setTriggers(savedTriggers);
-      console.log('[Trigger] BM25 indexes checked:', savedTriggers.map((trigger) => ({
-        id: trigger.id,
-        ready: !!trigger.bm25,
-        docs: trigger.bm25?.docs.length || 0,
-      })));
-
       // 加载对话历史
       const saved = await indexedDB_storage.getConversations();
       if (saved.length > 0) {
@@ -184,22 +172,33 @@ export function ChatView() {
   const handleEventFlowUpdate = (payload: {
     current_event?: EventFlowState['currentEvent'];
     event_completion?: EventFlowState['lastCompletion'];
+    trigger_match?: EventFlowState['triggerMatch'];
+    trigger_completion?: EventFlowState['triggerCompletion'];
     event_phase?: EventFlowState['lastPhase'];
+    source?: EventFlowState['source'];
   }) => {
     if (!currentConversationId) return;
+    if (payload.source !== 'sensory-llm-server') return;
 
     setConversations((prevConvs) =>
       prevConvs.map((conv) => {
         if (conv.id !== currentConversationId) return conv;
         const currentEvent = payload.current_event ?? conv.eventFlow?.currentEvent ?? null;
         const lastCompletion = payload.event_completion ?? conv.eventFlow?.lastCompletion ?? null;
+        const triggerMatch = payload.trigger_match ?? conv.eventFlow?.triggerMatch ?? null;
+        const triggerCompletion =
+          payload.trigger_completion ?? conv.eventFlow?.triggerCompletion ?? null;
         return {
           ...conv,
           eventFlow: {
             enabled: true,
             currentEvent,
             lastCompletion,
+            triggerMatch,
+            triggerCompletion,
             lastPhase: payload.event_phase ?? conv.eventFlow?.lastPhase,
+            awaitingServerUpdate: false,
+            source: payload.source,
             lastUpdatedAt: new Date(),
           },
           updatedAt: new Date(),
@@ -213,21 +212,6 @@ export function ChatView() {
     const lateNightCareIntent = activeProactiveIntentType === 'late-night-care'
       ? createManualProactiveIntent('late-night-care')
       : undefined;
-    const triggerMatch = findBestTriggerMatch(content, triggers);
-    const triggerMetadata = triggerMatch
-      ? {
-          id: triggerMatch.trigger.id,
-          name: triggerMatch.trigger.name,
-          score: Number(triggerMatch.score.toFixed(3)),
-          matchedKey: triggerMatch.matchedKey,
-          matchedPerspective: triggerMatch.matchedPerspective,
-          description: triggerMatch.trigger.description,
-        }
-      : undefined;
-
-    if (triggerMatch) {
-      console.log('[Trigger] fired:', triggerMetadata);
-    }
 
     // 添加用户消息
     const userMessage: Message = {
@@ -267,7 +251,6 @@ export function ChatView() {
       role: 'assistant',
       content: '',
       timestamp: new Date(),
-      metadata: triggerMetadata ? { trigger: triggerMetadata } : undefined,
     };
 
     // 添加空的 AI 消息
@@ -291,6 +274,28 @@ export function ChatView() {
       const currentConv = conversations.find((c) => c.id === currentConversationId);
       if (!currentConv) return;
       const eventFlowEnabled = currentConv.eventFlow?.enabled || false;
+      if (eventFlowEnabled) {
+        setConversations((prevConvs) =>
+          prevConvs.map((conv) => {
+            if (conv.id !== currentConversationId) return conv;
+            return {
+              ...conv,
+              eventFlow: {
+                enabled: true,
+                currentEvent: conv.eventFlow?.currentEvent || null,
+                lastCompletion: conv.eventFlow?.lastCompletion || null,
+                triggerMatch: conv.eventFlow?.triggerMatch || null,
+                triggerCompletion: conv.eventFlow?.triggerCompletion || null,
+                lastPhase: conv.eventFlow?.lastPhase,
+                awaitingServerUpdate: true,
+                source: conv.eventFlow?.source,
+                lastUpdatedAt: new Date(),
+              },
+              updatedAt: new Date(),
+            };
+          })
+        );
+      }
 
       const allMessages = [...currentConv.messages, userMessage];
       const contextWindowSize = currentConv.contextWindowSize || 10;
@@ -358,8 +363,7 @@ export function ChatView() {
 
       // 5. 拼接系统提示词：无论是否配置系统提示词，若有外部事件命中，则注入
       const baseSystemPrompt = currentSystemPrompt?.content || 'あなたは親しみやすいAIアシスタントです。';
-      const triggerPrompt = buildTriggerPrompt(triggerMatch);
-      const systemPromptToSend = `${baseSystemPrompt}${externalEventsPrompt}${triggerPrompt}`;
+      const systemPromptToSend = `${baseSystemPrompt}${externalEventsPrompt}`;
 
       // 6. 添加最近的消息（不再添加状态信息，由后端处理）
       const messagesToSend = [
@@ -382,7 +386,6 @@ export function ChatView() {
       console.log('状态数量（启用/总计）:', enabledStates.length, '/', (currentConv.numericStates || []).length);
       console.log('事件数量:', (currentConv.memoryEvents || []).length);
       console.log('事件记忆开启:', currentConv.enableEventMemory || false);
-      console.log('Trigger:', triggerMatch ? `${triggerMatch.trigger.id} (${triggerMatch.score.toFixed(3)})` : 'none');
       console.log('\n完整消息列表:');
       messagesToSend.forEach((msg, idx) => {
         console.log(`\n[${idx}] ${msg.role.toUpperCase()}:`);
@@ -921,12 +924,6 @@ export function ChatView() {
     );
   };
 
-  const handleTriggersChange = (nextTriggers: TriggerEvent[]) => {
-    const merged = mergeDefaultTriggers(nextTriggers);
-    setTriggers(merged);
-    indexedDB_storage.saveTriggers(merged);
-  };
-
   const handleNewConversation = async () => {
     const newConv = await createNewConversationWithAutoPrompt();
     setConversations((prev) => [newConv, ...prev]);
@@ -1400,15 +1397,6 @@ export function ChatView() {
                   {currentSystemPrompt?.name || 'システムプロンプト'}
                 </span>
               </button>
-              {/* 外部イベントボタン */}
-              <button
-                onClick={() => setIsTriggersDialogOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
-                title="Trigger"
-              >
-                <Tag className="h-4 w-4" />
-                <span className="text-sm font-medium">Trigger</span>
-              </button>
               <button
                 onClick={() => setIsExternalEventsDialogOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg border border-border-medium hover:border-accent hover:bg-surface-hover transition-all text-text-secondary hover:text-accent"
@@ -1532,13 +1520,6 @@ export function ChatView() {
         }}
       />
 
-      <TriggersDialog
-        isOpen={isTriggersDialogOpen}
-        onClose={() => setIsTriggersDialogOpen(false)}
-        triggers={triggers}
-        onChange={handleTriggersChange}
-      />
-
       {/* 数值状态对话框 */}
       <StatesDialog
         isOpen={isStatesDialogOpen}
@@ -1587,12 +1568,20 @@ function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
 
   const currentEvent = eventFlow.currentEvent;
   const completion = eventFlow.lastCompletion;
+  const triggerMatch = eventFlow.triggerMatch;
+  const triggerCompletion = eventFlow.triggerCompletion;
   const currentCompleted =
     currentEvent && completion?.id === currentEvent.id && completion.status === 'finish';
-  const statusLabel = currentCompleted ? '完成' : currentEvent ? '进行中' : '等待事件命中';
+  const statusLabel = currentCompleted
+    ? '完成'
+    : eventFlow.awaitingServerUpdate
+      ? '等待服务端 event_update'
+      : currentEvent
+        ? '进行中'
+        : '等待事件命中';
   const statusClass = currentCompleted
     ? 'bg-blue-500/10 text-blue-700 dark:text-blue-300'
-    : currentEvent
+    : currentEvent || eventFlow.awaitingServerUpdate
       ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
       : 'bg-surface-secondary text-text-secondary';
 
@@ -1616,6 +1605,11 @@ function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
             <span className={cn('rounded-md px-2 py-0.5 text-xs font-medium', statusClass)}>
               {statusLabel}
             </span>
+            {eventFlow.source && (
+              <span className="rounded-md bg-surface-secondary px-2 py-0.5 text-xs text-text-tertiary">
+                来源: {eventFlow.source}
+              </span>
+            )}
             {!currentEvent && completion?.status === 'finish' && (
               <span className="text-xs text-text-tertiary">上次完成: {completion.id}</span>
             )}
@@ -1630,8 +1624,29 @@ function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
             </div>
           ) : (
             <p className="mt-1 text-sm text-text-secondary">
-              当前没有命中的 event。发送包含 event keys 的内容后，这里会显示进入的目标和完成结果。
+              当前没有服务端返回的 event。发送包含 event keys 的内容后，这里只会根据 sensory-llm-server 的 event_update 更新。
             </p>
+          )}
+          {triggerMatch && (
+            <div className="mt-2 rounded-md border border-border-light bg-surface-primary px-3 py-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold text-text-primary">Trigger</span>
+                <span className="rounded-md bg-purple-500/10 px-2 py-0.5 text-xs text-purple-700 dark:text-purple-300">
+                  {triggerMatch.id}
+                </span>
+                <span className="text-xs text-text-tertiary">
+                  score {triggerMatch.score.toFixed(3)} / key {triggerMatch.matched_key}
+                </span>
+                {triggerCompletion?.id === triggerMatch.id && (
+                  <span className="rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                    {triggerCompletion.status}
+                  </span>
+                )}
+              </div>
+              <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
+                {triggerMatch.description}
+              </p>
+            </div>
           )}
         </div>
       </div>

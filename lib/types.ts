@@ -141,11 +141,30 @@ export interface EventFlowCompletion {
   persisted: boolean;
 }
 
+export interface EventFlowTriggerMatch {
+  id: string;
+  name: string;
+  score: number;
+  matched_key: string;
+  matched_perspective: 'role' | 'player';
+  description: string;
+}
+
+export interface EventFlowTriggerCompletion {
+  id: string;
+  status: 'finish';
+  persisted: boolean;
+}
+
 export interface EventFlowState {
   enabled: boolean;
   currentEvent?: EventFlowTarget | null;
   lastCompletion?: EventFlowCompletion | null;
+  triggerMatch?: EventFlowTriggerMatch | null;
+  triggerCompletion?: EventFlowTriggerCompletion | null;
   lastPhase?: 'entered' | 'completed';
+  awaitingServerUpdate?: boolean;
+  source?: 'sensory-llm-server';
   lastUpdatedAt?: Date;
 }
 
