@@ -1,0 +1,162 @@
+syntax = "proto3";
+
+package sensory.llm.v1;
+
+service SensoryLLMService {
+  rpc StreamChat(ChatRequest) returns (stream ChatStreamEvent);
+  rpc StreamListeningState(stream ListeningStateRequest) returns (stream ListeningStateEvent);
+  rpc GenerateFiller(FillerRequest) returns (FillerResponse);
+  rpc GetActionState(GetActionStateRequest) returns (GetActionStateResponse);
+  rpc GetModelInfo(GetModelInfoRequest) returns (GetModelInfoResponse);
+}
+
+message ChatRequest {
+  string model = 1;
+  repeated ChatMessage messages = 2;
+  GenerationConfig generation = 3;
+  RequestContext context = 4;
+  map<string, string> metadata = 5;
+}
+
+message ChatMessage {
+  string role = 1;
+  repeated ContentPart content = 2;
+  string name = 3;
+}
+
+message ContentPart {
+  oneof payload {
+    string text = 1;
+  }
+}
+
+message GenerationConfig {
+  optional int32 max_tokens = 1;
+  optional double temperature = 2;
+  optional double top_p = 3;
+  repeated string stop = 4;
+  bool stream = 5;
+  string response_format = 6;
+}
+
+message RequestContext {
+  string trace_id = 1;
+  string conversation_id = 2;
+  string request_id = 3;
+  string lang = 4;
+  string caller = 5;
+}
+
+message ChatStreamEvent {
+  string request_id = 1;
+  int64 seq = 2;
+  string run_id = 3;
+
+  oneof payload {
+    ChatDelta delta = 10;
+    ChatCompletion completion = 11;
+    LLMDebugEvent debug = 12;
+    LLMError error = 13;
+  }
+}
+
+message ChatDelta {
+  string text = 1;
+}
+
+message ChatCompletion {
+  string finish_reason = 1;
+  Usage usage = 2;
+}
+
+message Usage {
+  int32 input_tokens = 1;
+  int32 output_tokens = 2;
+  int32 total_tokens = 3;
+}
+
+message FillerRequest {
+  string model = 1;
+  string interim_text = 2;
+  repeated ChatMessage recent_history = 3;
+  string system_instruction = 4;
+  EmotionalState emotional_state = 5;
+  GenerationConfig generation = 6;
+  RequestContext context = 7;
+  map<string, string> metadata = 8;
+}
+
+message EmotionalState {
+  string emotion = 1;
+  optional double intensity = 2;
+  optional double valence = 3;
+  optional double arousal = 4;
+  optional double dominance = 5;
+  string current_behavior_text = 6;
+}
+
+message ListeningStateRequest {
+  RequestContext context = 1;
+  string phase = 2;
+  string content = 3;
+}
+
+message ListeningStateEvent {
+  string request_id = 1;
+  int64 seq = 2;
+  string phase = 3;
+  ListeningEmotionState emotional_state = 4;
+  string source = 5;
+}
+
+message ListeningEmotionState {
+  string emotion = 1;
+  optional double intensity = 2;
+}
+
+message FillerResponse {
+  string text = 1;
+  bool empty = 2;
+  LLMDebugEvent debug = 3;
+  Usage usage = 4;
+}
+
+message GetActionStateRequest {
+  string run_id = 1;
+  int32 timeout_ms = 2;
+}
+
+message GetActionStateResponse {
+  string run_id = 1;
+  string conversation_id = 2;
+  string trace_id = 3;
+  ActionState matched_action_state = 4;
+}
+
+message ActionState {
+  string id = 1;
+  double similarity = 2;
+  double threshold = 3;
+}
+
+message LLMDebugEvent {
+  string category = 1;
+  string event = 2;
+  string message = 3;
+  string json_payload = 4;
+}
+
+message LLMError {
+  string code = 1;
+  string message = 2;
+  bool retryable = 3;
+}
+
+message GetModelInfoRequest {}
+
+message GetModelInfoResponse {
+  repeated string main_models = 1;
+  repeated string filler_models = 2;
+  string default_main_model = 3;
+  string default_filler_model = 4;
+}

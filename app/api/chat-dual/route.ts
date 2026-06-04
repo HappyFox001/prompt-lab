@@ -109,7 +109,7 @@ async function postSensoryChatViaGrpc(
   const grpcTarget = process.env.SENSORY_LLM_GRPC_TARGET || '127.0.0.1:7871';
   const protoPath =
     process.env.SENSORY_LLM_PROTO_PATH ||
-    path.resolve(process.cwd(), '../../sensory-llm-server/proto/sensory/llm/v1/llm.proto');
+    path.resolve(process.cwd(), 'proto/sensory/llm/v1/llm.proto');
   const packageDefinition = protoLoader.loadSync(protoPath, {
     keepCase: true,
     longs: String,

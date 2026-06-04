@@ -183,22 +183,6 @@ OPENAI_MODEL=llama3.2
 3. 添加环境变量（API Key 等）
 4. 部署
 
-### Docker
-
-```bash
-# 构建镜像
-docker build -t promptlab .
-
-# 运行容器
-docker run -p 3000:3000 \
-  -e OPENAI_API_KEY=your-key \
-  -e OPENAI_BASE_URL=https://api.openai.com/v1 \
-  -e OPENAI_MODEL=gpt-4o-mini \
-  promptlab
-```
-
----
-
 ## 🛠️ 开发
 
 ### 构建生产版本
@@ -231,7 +215,7 @@ A: 修改 `.env.local` 中的 `OPENAI_MODEL` 值，重启开发服务器。
 A: 当前存储在浏览器的 localStorage 中。清除浏览器数据会丢失历史。
 
 **Q: 可以部署到服务器吗？**
-A: 可以！支持 Vercel、Netlify、Docker 等多种部署方式。
+A: 可以！支持 Vercel、Netlify 或直接在服务器上运行 Node.js 服务。
 
 ---
 
