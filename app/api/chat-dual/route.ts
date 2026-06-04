@@ -122,7 +122,12 @@ async function postSensoryChatViaGrpc(
   const client = new Service(grpcTarget, grpc.credentials.createInsecure(), {
     'grpc.enable_http_proxy': 0,
   });
-  await waitForGrpcReady(client, 3000);
+  try {
+    await waitForGrpcReady(client, 3000);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`sensory-llm-server gRPC unavailable at ${grpcTarget}: ${message}`);
+  }
   const metadata = new grpc.Metadata();
   const sensoryToken = process.env.SENSORY_LLM_INTERNAL_TOKEN;
   if (sensoryToken) metadata.set('authorization', `Bearer ${sensoryToken}`);
@@ -314,12 +319,9 @@ function transformGrpcStream(call: NodeJS.ReadableStream) {
 
       call.on('error', (error) => {
         if (closed) return;
-        closed = true;
-        try {
-          controller.error(error);
-        } catch {
-          // The stream may already be closed by the runtime.
-        }
+        const message = error instanceof Error ? error.message : String(error);
+        emitJson({ error: message || 'sensory-llm-server gRPC stream failed' });
+        closeStream();
       });
 
       call.on('end', () => {

@@ -410,8 +410,7 @@ export function ChatView() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'API 调用失败');
+        throw new Error(await readErrorResponse(response));
       }
 
       // 处理流式响应
@@ -441,6 +440,9 @@ export function ChatView() {
 
             try {
               const parsed = JSON.parse(data);
+              if (parsed.error) {
+                throw new Error(String(parsed.error));
+              }
 
               // 处理文本内容
               if (parsed.content) {
@@ -1182,8 +1184,7 @@ export function ChatView() {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'API 调用失败');
+        throw new Error(await readErrorResponse(response));
       }
 
       const reader = response.body?.getReader();
@@ -1208,6 +1209,9 @@ export function ChatView() {
 
             try {
               const parsed = JSON.parse(data);
+              if (parsed.error) {
+                throw new Error(String(parsed.error));
+              }
 
               if (parsed.content) {
                 fullContent += parsed.content;
@@ -1652,6 +1656,21 @@ function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
       </div>
     </div>
   );
+}
+
+async function readErrorResponse(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text.trim()) {
+    return `API 调用失败 (${response.status})`;
+  }
+  try {
+    const payload = JSON.parse(text) as { error?: unknown; details?: unknown };
+    const error = typeof payload.error === 'string' ? payload.error : '';
+    const details = typeof payload.details === 'string' ? payload.details : '';
+    return [error, details].filter(Boolean).join(': ') || `API 调用失败 (${response.status})`;
+  } catch {
+    return text.slice(0, 1000);
+  }
 }
 
 // 创建新对话
