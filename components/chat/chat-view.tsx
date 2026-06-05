@@ -1574,6 +1574,7 @@ function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
   const completion = eventFlow.lastCompletion;
   const triggerMatch = eventFlow.triggerMatch;
   const triggerCompletion = eventFlow.triggerCompletion;
+  const triggerId = triggerMatch?.id || triggerCompletion?.id;
   const currentCompleted =
     currentEvent && completion?.id === currentEvent.id && completion.status === 'finish';
   const statusLabel = currentCompleted
@@ -1631,25 +1632,30 @@ function EventFlowBanner({ eventFlow }: { eventFlow?: EventFlowState }) {
               当前没有服务端返回的 event。发送包含 event keys 的内容后，这里只会根据 sensory-llm-server 的 event_update 更新。
             </p>
           )}
-          {triggerMatch && (
+          {triggerId && (
             <div className="mt-2 rounded-md border border-border-light bg-surface-primary px-3 py-2">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-text-primary">Trigger</span>
                 <span className="rounded-md bg-purple-500/10 px-2 py-0.5 text-xs text-purple-700 dark:text-purple-300">
-                  {triggerMatch.id}
+                  {triggerId}
                 </span>
-                <span className="text-xs text-text-tertiary">
-                  score {triggerMatch.score.toFixed(3)} / key {triggerMatch.matched_key}
-                </span>
-                {triggerCompletion?.id === triggerMatch.id && (
+                {typeof triggerMatch?.score === 'number' && triggerMatch.matched_key && (
+                  <span className="text-xs text-text-tertiary">
+                    score {triggerMatch.score.toFixed(3)} / key {triggerMatch.matched_key}
+                  </span>
+                )}
+                {triggerCompletion?.id === triggerId && (
                   <span className="rounded-md bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-700 dark:text-blue-300">
                     {triggerCompletion.status}
+                    {triggerCompletion.persisted ? ' / persisted' : ''}
                   </span>
                 )}
               </div>
-              <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
-                {triggerMatch.description}
-              </p>
+              {triggerMatch?.description && (
+                <p className="mt-1 line-clamp-2 text-xs text-text-secondary">
+                  {triggerMatch.description}
+                </p>
+              )}
             </div>
           )}
         </div>

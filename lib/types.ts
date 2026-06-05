@@ -143,11 +143,11 @@ export interface EventFlowCompletion {
 
 export interface EventFlowTriggerMatch {
   id: string;
-  name: string;
-  score: number;
-  matched_key: string;
-  matched_perspective: 'role' | 'player';
-  description: string;
+  name?: string;
+  score?: number;
+  matched_key?: string;
+  matched_perspective?: 'role' | 'player';
+  description?: string;
 }
 
 export interface EventFlowTriggerCompletion {
