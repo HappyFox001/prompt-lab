@@ -5,6 +5,7 @@ import { ArrowLeft, User, MessageSquare, Calendar, Trash2, ChevronDown, ChevronU
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { FEEDBACK_TAGS } from '@/lib/feedback-constants';
+import { apiPath } from '@/lib/base-path';
 
 interface Feedback {
   id: string;
@@ -56,7 +57,7 @@ export default function FeedbackPage() {
       const params = new URLSearchParams();
       if (reviewer) params.set('reviewer', reviewer);
 
-      const response = await fetch(`/api/feedback?${params}`);
+      const response = await fetch(apiPath(`/api/feedback?${params}`));
       const data = await response.json();
       setFeedbacks(data.feedbacks || []);
     } catch (error) {
@@ -68,7 +69,7 @@ export default function FeedbackPage() {
 
   const loadStats = async () => {
     try {
-      const response = await fetch('/api/feedback?stats=true');
+      const response = await fetch(apiPath('/api/feedback?stats=true'));
       const data = await response.json();
       setReviewerStats(data.stats || []);
     } catch (error) {
@@ -80,7 +81,7 @@ export default function FeedbackPage() {
     if (feedbackMessages[feedbackId]) return;
 
     try {
-      const response = await fetch(`/api/feedback?id=${feedbackId}`);
+      const response = await fetch(apiPath(`/api/feedback?id=${feedbackId}`));
       const data = await response.json();
       if (data.messages) {
         setFeedbackMessages((prev) => ({
@@ -97,7 +98,7 @@ export default function FeedbackPage() {
     if (!confirm('このフィードバックを削除しますか？')) return;
 
     try {
-      await fetch(`/api/feedback?id=${id}`, { method: 'DELETE' });
+      await fetch(apiPath(`/api/feedback?id=${id}`), { method: 'DELETE' });
       setFeedbacks((prev) => prev.filter((f) => f.id !== id));
       loadStats();
     } catch (error) {

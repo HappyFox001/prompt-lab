@@ -25,6 +25,7 @@ import { DEFAULT_SYSTEM_PROMPTS, DEFAULT_USER_PROMPTS } from '@/lib/default-prom
 import { DEFAULT_NUMERIC_STATES } from '@/lib/default-states';
 import { createManualProactiveIntent, PROACTIVE_INTENTS } from '@/lib/proactive-dialogue';
 import { cn } from '@/lib/utils';
+import { apiPath } from '@/lib/base-path';
 
 export function ChatView() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -394,7 +395,7 @@ export function ChatView() {
       console.log('\n=================================\n');
 
       // 调用双层架构 API（第一层：快速响应）
-      const response = await fetch('/api/chat-dual', {
+      const response = await fetch(apiPath('/api/chat-dual'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -528,7 +529,7 @@ export function ChatView() {
 
           console.log('[后台处理] 3秒后开始深度分析...');
 
-          const bgResponse = await fetch('/api/process-background', {
+          const bgResponse = await fetch(apiPath('/api/process-background'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -733,7 +734,7 @@ export function ChatView() {
         hasRejectionReason: !!rejectionReason,
       });
 
-      const response = await fetch('/api/suggest-user-input', {
+      const response = await fetch(apiPath('/api/suggest-user-input'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1169,7 +1170,7 @@ export function ChatView() {
 
       console.log('[主动性对话] 手动触发:', intentType, PROACTIVE_INTENTS[intentType].label);
 
-      const response = await fetch('/api/chat-dual', {
+      const response = await fetch(apiPath('/api/chat-dual'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

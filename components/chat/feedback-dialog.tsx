@@ -5,6 +5,7 @@ import { Message, SystemPrompt, UserPrompt } from '@/lib/types';
 import { X, MessageSquare, User, ChevronDown, ChevronUp, Check, AlertCircle, CheckSquare, Square, FileText, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { FEEDBACK_TAGS } from '@/lib/feedback-constants';
+import { apiPath } from '@/lib/base-path';
 
 interface FeedbackDialogProps {
   isOpen: boolean;
@@ -125,7 +126,7 @@ export function FeedbackDialog({
           timestamp: m.timestamp?.toISOString?.() || m.timestamp,
         }));
 
-      const response = await fetch('/api/feedback', {
+      const response = await fetch(apiPath('/api/feedback'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

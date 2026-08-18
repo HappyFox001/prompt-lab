@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ModelConfig } from '@/lib/types';
 import { ChevronDown, Sparkles, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiPath } from '@/lib/base-path';
 
 interface ModelSelectorProps {
   selectedModelId: string;
@@ -16,7 +17,7 @@ export function ModelSelector({ selectedModelId, onModelChange }: ModelSelectorP
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/models')
+    fetch(apiPath('/api/models'))
       .then(async (res) => {
         if (!res.ok) {
           const errorText = await res.text();
